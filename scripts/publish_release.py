@@ -64,6 +64,7 @@ def publish(package: Path) -> str:
     with tempfile.TemporaryDirectory(prefix="source-", dir=output) as folder:
         checkout = Path(folder) / "repository"
         run("git", "clone", f"https://github.com/{REPOSITORY}.git", str(checkout))
+        run("git", "config", "core.autocrlf", "false", cwd=checkout)
         with zipfile.ZipFile(package) as archive:
             manifest = json.loads(archive.read("Editor-do-Escobar/package-manifest.json"))
             names = [*manifest["files"], "package-manifest.json"]

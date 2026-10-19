@@ -49,3 +49,5 @@
 | [BUG-0026](casos/BUG-0026.md) | Referência omitida/muda silencia a cópia audível | alta | VALIDADO_AUTOMATICAMENTE | tests/integration/test_identical_microphones.py |
 
 | [BUG-0027](casos/BUG-0027.md) | Metadados Python gerados entram no ZIP | baixa | VALIDADO_AUTOMATICAMENTE | tests/integration/test_distribution.py |
+
+| [BUG-0028](casos/BUG-0028.md) | Snapshot omite fontes técnicas JavaScript | média | VALIDADO_AUTOMATICAMENTE | tests/integration/test_distribution.py::test_technical_host_contract_runs_from_extracted_release |

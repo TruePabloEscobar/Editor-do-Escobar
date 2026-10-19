@@ -21,6 +21,7 @@ TREES = (
     "leis",
     ".github",
     "requirements",
+    "workflow_integration",
 )
 ROOT_FILES = (
     "README.md",
@@ -41,7 +42,22 @@ ROOT_FILES = (
     "O Editor - Instalar no DaVinci.cmd",
     "O Editor - Preparar e Testar.cmd",
 )
-SUFFIXES = {".py", ".ps1", ".lua", ".json", ".md", ".svg", ".js", ".yml", ".yaml", ".txt"}
+SUFFIXES = {
+    ".py",
+    ".ps1",
+    ".lua",
+    ".json",
+    ".md",
+    ".svg",
+    ".js",
+    ".cjs",
+    ".yml",
+    ".yaml",
+    ".txt",
+    ".html",
+    ".css",
+    ".xml",
+}
 EXCLUDED = {"__pycache__", ".pytest_cache", "node_modules", ".venv", "runtime", ".git"}
 
 
@@ -71,6 +87,10 @@ def release_files(root: Path) -> dict[str, bytes]:
         "launcher/O EDITOR.lua",
         "scripts/install_release.ps1",
         "Instalar EDE.bat",
+        "requirements/runtime-windows.txt",
+        "tests/js/workflow_host.cjs",
+        "workflow_integration/com.oeditor.resolve.internalhost/main.js",
+        "workflow_integration/com.oeditor.resolve.internalhost/manifest.xml",
     }
     if not required.issubset(result):
         raise ValueError(f"Pacote incompleto: {required - result.keys()}")

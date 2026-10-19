@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>O Editor — Host Interno</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script src="renderer.js" defer></script>
+  </head>
+  <body>
+    <main>
+      <h1>O Editor — Host Interno</h1>
+      <p id="status" class="status">STARTING</p>
+      <p id="detail">Inicializando host persistente…</p>
+      <p id="metadata" class="metadata"></p>
+      <p class="notice">
+        Este host processa requests locais. A exportação real permanece bloqueada
+        enquanto as capabilities mutáveis não forem comprovadas em projeto OE_TEST_.
+      </p>
+    </main>
+  </body>
+</html>

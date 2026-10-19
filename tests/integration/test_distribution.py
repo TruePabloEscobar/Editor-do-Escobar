@@ -71,3 +71,23 @@ def test_installer_validates_extracted_package_and_refuses_tamper(tmp_path):
     bad = subprocess.run(command, capture_output=True, timeout=30, check=False)
     assert bad.returncode != 0
     assert b"__main__.py" in bad.stderr
+
+
+def test_technical_host_contract_runs_from_extracted_release(tmp_path):
+    _, source = unpack(tmp_path)
+    result = subprocess.run(
+        [
+            "node",
+            str(source / "tests/js/workflow_host.cjs"),
+            str(source / "workflow_integration/com.oeditor.resolve.internalhost/main.js"),
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "aprovados" in result.stdout
+    for name in ("manifest.xml", "index.html", "styles.css", "preload.js", "renderer.js"):
+        assert (source / "workflow_integration/com.oeditor.resolve.internalhost" / name).is_file()

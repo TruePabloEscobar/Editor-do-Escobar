@@ -41,6 +41,8 @@ Evidências locais: runtime/reports/planner-before.json e planner-final.json.
   erro; formato e caminho agora validados, preservando a configuração anterior.
 - BUG-0025: instrumentação herdada pelo ZIP duplicava fontes na cobertura;
   subprocesso da instalação foi isolado, mantendo threshold de 75%.
+- BUG-0028: host técnico e seu teste CJS ausentes do snapshot; o ZIP extraído
+  agora executa o contrato real Node/VM e inclui os assets de fonte, sem SDK nativo.
 - BUG-0027: metadados .egg-info entravam no ZIP após liberar TXT; excluídos por
   componente de caminho e protegidos pelo teste real do pacote.
 - BUG-0026: referência omitida ou muda podia silenciar a cópia restante; apenas

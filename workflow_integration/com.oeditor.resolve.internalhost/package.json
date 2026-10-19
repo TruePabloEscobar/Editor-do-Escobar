@@ -1,0 +1,6 @@
+{
+  "name": "o-editor-resolve-internal-host",
+  "version": "0.1.0",
+  "description": "Host persistente local para O Editor",
+  "main": "main.js"
+}

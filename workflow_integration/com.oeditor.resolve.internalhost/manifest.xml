@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<BlackmagicDesign>
+    <Plugin>
+        <Id>com.oeditor.resolve.internalhost</Id>
+        <Name>O Editor — Host Interno</Name>
+        <Version>0.1.0</Version>
+        <Description>Host persistente local e seguro para O Editor.</Description>
+        <FilePath>main.js</FilePath>
+    </Plugin>
+</BlackmagicDesign>
