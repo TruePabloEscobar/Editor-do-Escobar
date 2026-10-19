@@ -1,0 +1,20 @@
+{
+  "verified_on": "2026-10-19",
+  "laws": [
+    {
+      "file": "LEI_BOAS_PRATICAS.md",
+      "canonical": "T:\\Skills & Mds\\LEIS (Mds de cding)\\LEI_BOAS_PRATICAS.md",
+      "sha256": "52d1851fd54cd9c4ebc0bf972fac800ec719d8f8f56a72728a415a3f59ad00bc"
+    },
+    {
+      "file": "LEI_CONSISTENCIA_VISUAL.md",
+      "canonical": "T:\\Skills & Mds\\LEIS (Mds de cding)\\LEI_CONSISTENCIA_VISUAL.md",
+      "sha256": "8c2c9dc3bc55c82a2fcb201ded3b58fe0860ae84938454765b7fa1ab2c6b0abe"
+    },
+    {
+      "file": "LEI_NAO_REGRESSAO.md",
+      "canonical": "T:\\Skills & Mds\\LEIS (Mds de cding)\\LEI_NAO_REGRESSAO.md",
+      "sha256": "1b2fc5e0b5bafa811b2639537872b7af5db14d013ff11c5ebb04d783e4456b2c"
+    }
+  ]
+}

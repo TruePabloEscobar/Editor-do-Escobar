@@ -1,0 +1,68 @@
+{
+  "schema_version": "1.0",
+  "app": {
+    "language": "pt-BR",
+    "theme": "system",
+    "log_level": "INFO"
+  },
+  "resolve": {
+    "target_major_version": 21,
+    "require_studio": true,
+    "text_track_name": "OE - TEXTOS",
+    "duplicate_suffix": "_OE_EDIT",
+    "add_audit_markers": true,
+    "internal_host_enabled": true,
+    "external_bridge_enabled": false,
+    "api_paths": [],
+    "library_paths": [],
+    "documentation_paths": []
+  },
+  "ffmpeg": {
+    "ffmpeg_path": null,
+    "ffprobe_path": null
+  },
+  "transcription": {
+    "provider": "faster-whisper",
+    "model": "large-v3-turbo",
+    "model_path": null,
+    "device": "auto",
+    "device_index": 0,
+    "compute_type": "auto",
+    "language": "pt",
+    "word_timestamps": true
+  },
+  "zoom": {
+    "enabled": true,
+    "intensity": "medium",
+    "frequency": "medium",
+    "max_zoom": 1.15,
+    "minimum_gap_seconds": 8,
+    "maximum_per_minute": 3
+  },
+  "text": {
+    "enabled": true,
+    "frequency": "low",
+    "minimum_gap_seconds": 10,
+    "maximum_per_minute": 2,
+    "minimum_words": 2,
+    "maximum_words": 6,
+    "minimum_duration_seconds": 1.5,
+    "maximum_duration_seconds": 3.0
+  },
+  "analysis": {
+    "keywords": [
+      "o mais importante",
+      "o problema",
+      "por isso",
+      "em resumo",
+      "a conclusão"
+    ]
+  },
+  "safety": {
+    "dry_run_default": true,
+    "require_timeline_duplicate": true,
+    "skip_existing_fusion_comps": true,
+    "allow_gui_automation": false,
+    "allow_alpha_title_fallback": false
+  }
+}
