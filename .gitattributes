@@ -1,2 +1,0 @@
-# Preserve canonical law copies byte-for-byte across Windows checkouts.
-leis/LEI_*.md -text
