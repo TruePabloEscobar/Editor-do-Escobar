@@ -1,5 +1,26 @@
 # Changelog
 
+## Não publicado — 2026-10-22
+
+- Crédito fixo, centralizado no rodapé da janela: "Desenvolvido por: Pablo Escobar",
+  com link para o site do desenvolvedor (tests/ui/test_developer_credit.py).
+- Zoom por take (etapa Zoom, opcional): um take a cada N com zoom fixo; zoom e
+  frequência fixos ou em faixa com sorteio reproduzível; zoom de 1% a 10000% (abaixo
+  de 100% diminui); ponto do zoom no centro por padrão e ajustável em X/Y; escolha de
+  faixas de vídeo. Aplica junto com o Rough Cut ou depois, só em timelines criadas
+  pelo O Editor, com conferência por leitura, reversão em falha e Desfazer (Ctrl+Z)
+  em vários níveis. Scripts 2.5.0. Detalhes em docs/TAKE_ZOOM.md.
+- A etapa Zoom deixou de mostrar as sugestões heurísticas de zoom (mudança pedida);
+  Legendas mantém a lista de sugestões de texto.
+- Inicialização: o script do menu deixou de abrir um cmd.exe por linha de log e por
+  arquivo (28 → 1 processo por abertura na simulação; BUG-0029). Scripts 2.4.1.
+- Sessões indexadas: abrir uma timeline não desserializa mais todas as sessões
+  (BUG-0030). Verificação do FFmpeg fora da thread da interface (BUG-0031).
+- Tempos de inicialização registrados como `startup_timing` em o-editor.log;
+  benchmark reproduzível em scripts/benchmark_startup.py.
+- Prévia: Frames antes de Tempo e selecionado por padrão; limpeza de
+  microfones/retorno passou para a aba Silêncios.
+
 ## 0.2.0 — 2026-10-19
 
 - Editor Do Escobar (EDE): navegação horizontal, knobs Tempo/Frames, modelo local

@@ -8,19 +8,22 @@ import sys
 import zipfile
 from pathlib import Path
 
-from scripts.package_release import ROOT, package_release
+import pytest
+
+from scripts.package_release import ROOT, package_release, public_files, release_files
 
 
-def unpack(tmp_path):
-    package = package_release(ROOT, tmp_path / "output")
+def unpack(tmp_path, *, public=False):
+    package = package_release(ROOT, tmp_path / "output", public=public)
     with zipfile.ZipFile(package) as archive:
         archive.extractall(tmp_path / "extracted")
     return package, tmp_path / "extracted/Editor-do-Escobar"
 
 
-def test_zip_reproducible_private_files_excluded_and_hashes_correct(tmp_path):
-    first, source = unpack(tmp_path)
-    second = package_release(ROOT, tmp_path / "second")
+@pytest.mark.parametrize("public", [False, True])
+def test_zip_reproducible_private_files_excluded_and_hashes_correct(tmp_path, public):
+    first, source = unpack(tmp_path, public=public)
+    second = package_release(ROOT, tmp_path / "second", public=public)
     assert first.read_bytes() == second.read_bytes()
     manifest = json.loads((source / "package-manifest.json").read_text(encoding="utf-8"))
     assert manifest["files"]
@@ -54,8 +57,9 @@ def test_zip_reproducible_private_files_excluded_and_hashes_correct(tmp_path):
     assert "dry-run" in result.stdout
 
 
-def test_installer_validates_extracted_package_and_refuses_tamper(tmp_path):
-    _, source = unpack(tmp_path)
+@pytest.mark.parametrize("public", [False, True])
+def test_installer_validates_extracted_package_and_refuses_tamper(tmp_path, public):
+    _, source = unpack(tmp_path, public=public)
     command = [
         "powershell.exe",
         "-NoProfile",
@@ -91,3 +95,27 @@ def test_technical_host_contract_runs_from_extracted_release(tmp_path):
     assert "aprovados" in result.stdout
     for name in ("manifest.xml", "index.html", "styles.css", "preload.js", "renderer.js"):
         assert (source / "workflow_integration/com.oeditor.resolve.internalhost" / name).is_file()
+
+
+def test_public_snapshot_excludes_local_reports_settings_and_rejects_credentials(tmp_path):
+    root = tmp_path / "source"
+    for name, data in release_files(ROOT).items():
+        target = root / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+    for name in ("config/personal.json", "docs/AUDITORIA_PRIVATE.md", "runtime/session.json"):
+        target = root / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("PRIVATE_" + "SENTINEL", encoding="utf-8")
+    files = public_files(root)
+    assert all((b"PRIVATE_" + b"SENTINEL") not in data for data in files.values())
+    assert not any(name.startswith(("qa/", "leis/")) for name in files)
+    assert "AGENTS.md" not in files
+    assert "Publicar EDE no GitHub.bat" in files
+    (root / "src/o_editor/accidental.py").write_text(
+        'credential = "' + "ghp_" + "A" * 36 + '"', encoding="utf-8"
+    )
+    with pytest.raises(
+        ValueError, match=r"Possivel credencial recusada: src/o_editor/accidental\.py"
+    ):
+        public_files(root)

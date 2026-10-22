@@ -8,6 +8,7 @@ from typing import Any
 
 from PySide6.QtCore import QSettings, Qt, QThread, QTimer, Signal
 from PySide6.QtWidgets import (
+    QAbstractButton,
     QButtonGroup,
     QCheckBox,
     QComboBox,
@@ -52,6 +53,7 @@ from o_editor.domain.rough_cut import (
     TrackPolicy,
 )
 from o_editor.domain.speech import TranscriptSession
+from o_editor.domain.take_zoom import TakeZoomSettings, with_take_zoom, without_take_zoom
 from o_editor.domain.timeline_layout import LayoutError, TimelineLayout
 from o_editor.domain.voice_tracks import SelectedVoiceTrack
 from o_editor.errors import OEditorError
@@ -90,6 +92,7 @@ PRESET_LABELS = (
 class TranscriptPanel(QWidget):
     stage_requested = Signal(int)
     activity_changed = Signal()
+    plan_changed = Signal()
 
     def __init__(
         self,
@@ -99,6 +102,7 @@ class TranscriptPanel(QWidget):
         use_mock: bool,
         context_provider: Callable[[], dict[str, Any]],
         selected_tracks_provider: Callable[[], tuple[SelectedVoiceTrack, ...]],
+        take_zoom_provider: Callable[[], TakeZoomSettings | None] | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -110,6 +114,8 @@ class TranscriptPanel(QWidget):
         self._use_mock = use_mock
         self._context_provider = context_provider
         self._selected_tracks_provider = selected_tracks_provider
+        self._take_zoom_provider = take_zoom_provider
+        self._external_busy: Callable[[], bool] = lambda: False
         self._store = SessionStore(root / "runtime" / "mock-sessions" if use_mock else None)
         self._session: TranscriptSession | None = None
         self._layout: TimelineLayout | None = None
@@ -253,21 +259,24 @@ class TranscriptPanel(QWidget):
         self.duration_units = QWidget()
         unit_row = QHBoxLayout(self.duration_units)
         unit_row.setContentsMargins(0, 0, 0, 0)
-        self.time_units_button = QPushButton("Tempo")
+        # Frames comes first and is the default whenever the timeline FPS is known.
         self.frame_units_button = QPushButton("Frames")
+        self.time_units_button = QPushButton("Tempo")
+        self._prefer_frames = True
         self._unit_group = QButtonGroup(self)
-        for button in (self.time_units_button, self.frame_units_button):
+        for button in (self.frame_units_button, self.time_units_button):
             button.setProperty("role", "unit")
             button.setCheckable(True)
             self._unit_group.addButton(button)
             unit_row.addWidget(button)
-        self.time_units_button.setChecked(True)
+        self.frame_units_button.setChecked(True)
         top_row.addWidget(self.duration_units)
         self.duration_fps_label = label("Carregue uma timeline para usar Frames.", "muted")
+        self.duration_fps_label.setWordWrap(False)
         top_row.addWidget(self.duration_fps_label)
         top_row.addStretch()
         silence_layout.addLayout(top_row)
-        self.frame_units_button.toggled.connect(self._duration_units_changed)
+        self._unit_group.buttonClicked.connect(self._duration_unit_clicked)
         self.minimum_silence = DurationControl(200, 20_000, 1200, "Silêncio mínimo removível")
         self.keep_before = DurationControl(0, 3000, 250, "Margem antes da fala")
         self.keep_after = DurationControl(0, 3000, 350, "Margem depois da fala")
@@ -290,16 +299,7 @@ class TranscriptPanel(QWidget):
         self.protect_sounds.setChecked(True)
         self.trim_edges = QCheckBox("Remover silêncio nas extremidades")
         self.trim_edges.setChecked(True)
-        options.addWidget(self.protect_sounds)
-        options.addWidget(self.trim_edges)
-        options.addStretch()
-        knob_row.addLayout(options)
-        knob_row.addStretch()
-        silence_layout.addLayout(knob_row)
-        self.preview_controls.addTab(silence_page, "Silêncios")
-
-        microphones_page = QWidget()
-        microphones_layout = QVBoxLayout(microphones_page)
+        # Microphone/return cleanup lives with the other silence options (no own tab).
         self.cleanup_microphones = QCheckBox("Limpar microfones sem fala / retorno")
         self.cleanup_microphones.setObjectName("cleanupMicrophones")
         self.cleanup_microphones.setChecked(
@@ -310,12 +310,15 @@ class TranscriptPanel(QWidget):
             "intencionais ficam ativos. Confirma retorno por áudio digital idêntico "
             "ou por texto idêntico com diferença de pelo menos 6 dB."
         )
-        microphones_layout.addWidget(self.cleanup_microphones)
-        microphones_layout.addWidget(
-            label("Preserva falas simultâneas diferentes, risos e reações.")
-        )
-        microphones_layout.addStretch()
-        self.preview_controls.addTab(microphones_page, "Microfones / retorno")
+        options.addWidget(self.protect_sounds)
+        options.addWidget(self.trim_edges)
+        options.addWidget(self.cleanup_microphones)
+        options.addStretch()
+        knob_row.addLayout(options)
+        knob_row.addStretch()
+        silence_layout.addLayout(knob_row)
+        self.preview_controls.addTab(silence_page, "Silêncios")
+
         self.cleanup_microphones.toggled.connect(self._microphone_cleanup_changed)
 
         policy_page = QWidget()
@@ -574,6 +577,10 @@ class TranscriptPanel(QWidget):
     @property
     def operation_active(self) -> bool:
         return self.has_running_worker or self._pending_plan_id is not None
+
+    @property
+    def request_pending(self) -> bool:
+        return self._pending_plan_id is not None
 
     @property
     def has_running_worker(self) -> bool:
@@ -847,6 +854,10 @@ class TranscriptPanel(QWidget):
         self._update_buttons()
 
     # ------------------------------------------------------------------ rough cut
+    def _duration_unit_clicked(self, button: QAbstractButton) -> None:
+        self._prefer_frames = button is self.frame_units_button
+        self._duration_units_changed()
+
     def _duration_units_changed(self, *_args: Any) -> None:
         fps = self._layout.fps if self._layout is not None else None
         self.frame_units_button.setEnabled(fps is not None)
@@ -855,9 +866,12 @@ class TranscriptPanel(QWidget):
             if fps
             else "Carregue uma timeline para usar Frames."
         )
-        if fps is None and self.frame_units_button.isChecked():
-            self.time_units_button.setChecked(True)
-        frames = self.frame_units_button.isChecked()
+        # Without FPS the values are shown in time, but the Frames preference is kept
+        # and restored as soon as a timeline is loaded.
+        frames = self._prefer_frames and fps is not None
+        target = self.frame_units_button if frames else self.time_units_button
+        if not target.isChecked():
+            target.setChecked(True)
         for control in (self.minimum_silence, self.keep_before, self.keep_after):
             control.set_display(frames, fps)
         self.duration_fps_label.setText(
@@ -910,6 +924,7 @@ class TranscriptPanel(QWidget):
 
     def _preview_settings_changed(self, *_args: Any) -> None:
         self._plan = None
+        self.plan_changed.emit()
         self._update_status()
         if self._session is not None and self._pending_plan_id is None:
             self.status_label.setText(
@@ -940,7 +955,9 @@ class TranscriptPanel(QWidget):
             self._plan = None
             self._error(str(exc))
             return
-        self.preview_text.setPlainText(render_preview(self._plan, self._session))
+        self._plan = self._with_requested_zoom(self._plan)
+        self._render_plan_preview()
+        self.plan_changed.emit()
         self.status_label.setText(
             "Prévia bloqueada. Confira os alertas no plano."
             if self._plan.blocked
@@ -948,17 +965,68 @@ class TranscriptPanel(QWidget):
         )
         self._update_buttons()
 
+    def set_external_busy(self, provider: Callable[[], bool]) -> None:
+        """Another step (zoom) owns the single Resolve request slot while it is busy."""
+        self._external_busy = provider
+
+    @property
+    def plan(self) -> RoughCutPlan | None:
+        return self._plan
+
+    def _with_requested_zoom(self, plan: RoughCutPlan) -> RoughCutPlan:
+        settings = self._take_zoom_provider() if self._take_zoom_provider else None
+        if settings is None:
+            return without_take_zoom(plan)
+        return with_take_zoom(plan, settings)
+
+    def _render_plan_preview(self) -> None:
+        if self._plan is None or self._session is None:
+            return
+        text = render_preview(self._plan, self._session)
+        zoom = self._plan.take_zoom
+        if zoom is not None:
+            summary = zoom.get("summary") or {}
+            text += (
+                f"\n\nZoom por take (junto): {summary.get('zoomed', 0)} de "
+                f"{summary.get('takes', 0)} takes com zoom; somente faixas de vídeo marcadas."
+            )
+        self.preview_text.setPlainText(text)
+
+    def take_zoom_changed(self) -> None:
+        """Zoom settings changed: update the zoom inside the current preview, if any."""
+        if self._plan is None or self._pending_plan_id is not None:
+            return
+        try:
+            updated = self._with_requested_zoom(self._plan)
+        except (OEditorError, ValueError):
+            updated = without_take_zoom(self._plan)
+        if updated is self._plan:
+            return
+        self._plan = updated
+        self._render_plan_preview()
+        self.plan_changed.emit()
+
     def _send_plan(self, *, apply: bool) -> None:
         plan = self._plan
         if plan is None or plan.blocked or self._pending_plan_id is not None:
             return
+        if self._external_busy():
+            self.status_label.setText("Aguarde o pedido de zoom em andamento no Resolve.")
+            return
         if apply:
+            zoom_line = ""
+            if plan.take_zoom is not None:
+                summary = plan.take_zoom.get("summary") or {}
+                zoom_line = (
+                    f"\nZoom por take junto: {summary.get('zoomed', 0)} de "
+                    f"{summary.get('takes', 0)} takes."
+                )
             answer = QMessageBox.question(
                 self,
                 "Aplicar Rough Cut",
                 f"Criar a nova timeline '{plan.target_timeline_name}' com "
-                f"{plan.stats.operations} itens?\n\nA timeline original não será alterada. "
-                "Após confirmar, o programa executará o pedido no Resolve.",
+                f"{plan.stats.operations} itens?{zoom_line}\n\nA timeline original não será "
+                "alterada. Após confirmar, o programa executará o pedido no Resolve.",
             )
             if answer != QMessageBox.StandardButton.Yes:
                 return

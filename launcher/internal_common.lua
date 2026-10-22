@@ -3,8 +3,8 @@
 local M = {}
 local JSON_NULL = {}
 
-M.COMMON_VERSION = "2.4.0"
-M.COMMON_HASH = "microphone-clip-state-20261019"
+M.COMMON_VERSION = "2.5.0"
+M.COMMON_HASH = "take-zoom-20261022"
 
 local function parent_directory(path)
     return tostring(path):match("^(.*)[/\\][^/\\]+$")
@@ -45,13 +45,36 @@ function M.quote_windows_arg(value)
     return '"' .. text:gsub('"', '""') .. '"'
 end
 
+-- Each os.execute starts cmd.exe inside Resolve and costs a noticeable fraction of a
+-- second (BUG-0029). Directories are created at most once per process, and only
+-- after a write actually failed because the folder was missing.
+local known_directories = {}
+
 function M.ensure_directory(path)
+    if known_directories[path] then
+        return
+    end
     local command = "cmd.exe /d /c if not exist " .. M.quote_windows_arg(path)
         .. " mkdir " .. M.quote_windows_arg(path)
     local result = os.execute(command)
     if result ~= true and result ~= 0 then
         error("Não foi possível criar o diretório: " .. tostring(path))
     end
+    known_directories[path] = true
+end
+
+-- Open for writing; create the parent folder only when the first attempt fails.
+function M.open_for_write(path, mode)
+    local handle, open_error = io.open(path, mode)
+    if handle then
+        return handle
+    end
+    local parent = parent_directory(path)
+    if parent and not known_directories[parent] then
+        M.ensure_directory(parent)
+        handle, open_error = io.open(path, mode)
+    end
+    return handle, open_error
 end
 
 function M.file_exists(path)
@@ -74,11 +97,7 @@ function M.read_text(path)
 end
 
 function M.write_text(path, content)
-    local parent = parent_directory(path)
-    if parent then
-        M.ensure_directory(parent)
-    end
-    local handle, open_error = io.open(path, "wb")
+    local handle, open_error = M.open_for_write(path, "wb")
     if not handle then
         error("Não foi possível gravar " .. tostring(path) .. ": " .. tostring(open_error))
     end
@@ -87,11 +106,10 @@ function M.write_text(path, content)
 end
 
 function M.append_log(path, message)
-    local parent = parent_directory(path)
-    if parent then
-        pcall(M.ensure_directory, parent)
+    local ok, handle = pcall(M.open_for_write, path, "ab")
+    if not ok then
+        handle = nil
     end
-    local handle = io.open(path, "ab")
     if handle then
         handle:write(M.timestamp() .. " " .. tostring(message) .. "\n")
         handle:close()
@@ -349,9 +367,14 @@ function M.safe_call(label, operation)
 end
 
 function M.uuid()
-    local address = tostring({}):match("0x(%x+)")
-    local salt = tonumber(address or "0", 16) or 0
-    math.randomseed(os.time() + salt)
+    -- Menu scripts reload this file with dofile. Keep the seed across reloads:
+    -- reseeding with a reused table address in the same second repeats every UUID.
+    if not package.loaded["o_editor.uuid_seeded"] then
+        local address = tostring({}):match("0x(%x+)")
+        local salt = tonumber(address or "0", 16) or 0
+        math.randomseed(os.time() + salt)
+        package.loaded["o_editor.uuid_seeded"] = true
+    end
     local template = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx"
     return template:gsub("[xy]", function(character)
         local value = character == "x" and math.random(0, 15) or math.random(8, 11)
@@ -871,9 +894,7 @@ function M.run_internal_action(action_name, action_function, options)
     local base = M.app_data_dir()
     local log_path = base .. "\\logs\\" .. tostring(options.log_name or action_name) .. ".log"
     local common_log_path = base .. "\\logs\\internal-common.log"
-    for _, directory in ipairs({"logs", "requests", "requests\\processed", "reports", "plans"}) do
-        M.ensure_directory(base .. "\\" .. directory)
-    end
+    -- Folders are created lazily by the first write that needs them (BUG-0029).
     local script_path = options.script_path or M.script_path(3)
     M.append_log(common_log_path, "Helper " .. M.COMMON_VERSION .. " action=" .. action_name)
     M.append_log(log_path, "Internal action start: " .. tostring(action_name))
@@ -1402,6 +1423,7 @@ function M.apply_rough_cut(runtime, plan, log)
     local counters = {properties = 0, property_failures = 0, channel_mappings = 0,
         channel_mapping_failures = 0, extras_removed = 0, source_frame_rounding = 0, native_audio_reused = 0}
     local link_groups = {}
+    local zoom_journal, zoom_failures = {}, 0
     local staged_native = {}
     local future_audio = {}
     local function operation_key(op)
@@ -1563,6 +1585,21 @@ function M.apply_rough_cut(runtime, plan, log)
             return fail("A operação " .. tostring(op.op_id) .. " não confirmou o estado ativo/desativado do clipe.")
         end
         counters.clip_states_verified = (counters.clip_states_verified or 0) + 1
+        if type(op.zoom) == "table" then
+            local before = M.read_zoom(target)
+            if M.set_zoom(target, op.zoom) then
+                zoom_journal[#zoom_journal + 1] = {
+                    item_id = tostring((M.call_method(target, "GetUniqueId")) or ""),
+                    track_index = op.track_index, take_index = (tonumber(op.keep_index) or 0) + 1,
+                    start_frame = op.record_start, end_frame = op.record_end,
+                    before = before, after = (M.read_zoom(target)),
+                }
+            else
+                M.set_zoom(target, before)
+                zoom_failures = zoom_failures + 1
+                log("zoom not confirmed " .. tostring(op.op_id))
+            end
+        end
         if type(op.link_group) == "string" then
             link_groups[op.link_group] = link_groups[op.link_group] or {}
             local group = link_groups[op.link_group]
@@ -1617,6 +1654,18 @@ function M.apply_rough_cut(runtime, plan, log)
     check("original_intact", "PASSED", "timeline original conferida após a aplicação")
     details.counters = counters
     details.linked_groups = linked
+    -- Cut points of the new timeline: the takes for a later zoom step.
+    details.take_starts = {}
+    for _, keep in ipairs(plan.keep_ranges or {}) do
+        details.take_starts[#details.take_starts + 1] = tonumber(keep.record_start)
+    end
+    if #zoom_journal > 0 or zoom_failures > 0 then
+        details.take_zoom = {applied = #zoom_journal, failures = zoom_failures, journal = zoom_journal}
+        if zoom_failures > 0 then
+            details.warnings[#details.warnings + 1] = tostring(zoom_failures)
+                .. " take(s) ficaram sem o zoom planejado (o Resolve não confirmou o valor)."
+        end
+    end
     details.markers_moved = markers_moved
     details.markers_dropped = markers_dropped
     if counters.property_failures > 0 then
@@ -1636,9 +1685,255 @@ function M.apply_rough_cut(runtime, plan, log)
             "Nova timeline: " .. target_name,
             "Itens criados e conferidos: " .. tostring(#operations),
             "Grupos vinculados: " .. tostring(linked),
+            "Itens com zoom por take conferidos: " .. tostring(#zoom_journal),
             "Marcadores reposicionados: " .. tostring(markers_moved) .. "; descartados: " .. tostring(markers_dropped),
             "Grades de cor, composições Fusion e transições não são copiadas; confira a nova timeline.",
         })
+end
+
+-- ---------------------------------------------------------------------------
+-- Zoom per take. Only ZoomX/ZoomY/AnchorPointX/AnchorPointY are touched, only on
+-- timelines created by O Editor, and every value is verified by readback.
+-- ---------------------------------------------------------------------------
+
+M.TAKE_ZOOM_PLAN_MAX_AGE_SECONDS = 3600
+local ZOOM_KEYS = {"ZoomX", "ZoomY", "AnchorPointX", "AnchorPointY"}
+-- Resolve defaults, used only when a getter does not report a key.
+local ZOOM_DEFAULTS = {ZoomX = 1.0, ZoomY = 1.0, AnchorPointX = 0.0, AnchorPointY = 0.0}
+
+function M.read_zoom(item)
+    local properties = M.call_method(item, "GetProperties")
+    local values, assumed = {}, false
+    for _, key in ipairs(ZOOM_KEYS) do
+        local value = type(properties) == "table" and properties[key] or nil
+        if value == nil then
+            value = M.call_method(item, "GetProperty", key)
+        end
+        value = tonumber(value)
+        if value == nil then
+            value = ZOOM_DEFAULTS[key]
+            assumed = true
+        end
+        values[key] = value
+    end
+    return values, assumed
+end
+
+function M.zoom_matches(current, expected)
+    for key, value in pairs(expected or {}) do
+        local reading = tonumber(current[key])
+        local tolerance = key:sub(1, 4) == "Zoom" and 0.0005 or 0.01
+        if reading == nil or tonumber(value) == nil or math.abs(reading - tonumber(value)) > tolerance then
+            return false
+        end
+    end
+    return true
+end
+
+-- Set and confirm by readback; returns true only when Resolve reports the values.
+function M.set_zoom(item, values)
+    local clean = {}
+    for _, key in ipairs(ZOOM_KEYS) do
+        if type(values) == "table" and tonumber(values[key]) ~= nil then clean[key] = tonumber(values[key]) end
+    end
+    if next(clean) == nil then return false end
+    local ok = M.call_method(item, "SetProperties", clean)
+    if ok == nil then
+        ok = true
+        for key, value in pairs(clean) do
+            if M.call_method(item, "SetProperty", key, value) ~= true then ok = false end
+        end
+    end
+    return ok == true and M.zoom_matches((M.read_zoom(item)), clean)
+end
+
+function M.is_o_editor_timeline_name(name)
+    name = tostring(name or "")
+    return name:find("_OE_ROUGHCUT_", 1, true) ~= nil and name:sub(-7) ~= "_FALHOU"
+end
+
+function M.apply_take_zoom(runtime, plan, log)
+    log = log or function(_message) end
+    local details = {
+        plan_id = plan and plan.plan_id or JSON_NULL,
+        mode = plan and plan.mode or JSON_NULL,
+        purpose = plan and plan.purpose or JSON_NULL,
+        undo_of = plan and plan.undo_of or JSON_NULL,
+        checks = {},
+        warnings = {},
+        timeline_id = JSON_NULL,
+        timeline_name = JSON_NULL,
+        items_total = 0,
+        items_applied = 0,
+        journal = {},
+        rolled_back = false,
+    }
+    local function check(name, status, detail)
+        details.checks[#details.checks + 1] = {name = name, status = status, detail = tostring(detail or "")}
+        log("check " .. name .. "=" .. status .. " " .. tostring(detail or ""))
+    end
+    local function outcome(status, message, mutated, lines)
+        return {status = status, message = message, details = details,
+            mutations_executed = mutated == true, markdown_lines = lines}
+    end
+    local undo = type(plan) == "table" and plan.purpose == "undo"
+    local label = undo and "Desfazer zoom" or "Zoom"
+
+    if type(plan) ~= "table" or plan.schema_version ~= 1 or plan.kind ~= "take_zoom"
+            or (plan.purpose ~= "apply" and plan.purpose ~= "undo") then
+        check("plan_schema", "FAILED", "schema/kind inválido")
+        return outcome("FAILED", "Plano de zoom inválido. Nada foi alterado.", false)
+    end
+    check("plan_schema", "PASSED", "schema_version=1")
+    if plan.mode ~= "APPLY" or plan.confirmed_by_user ~= true then
+        check("confirmation", "FAILED", tostring(plan.mode))
+        return outcome("BLOCKED", "O zoom não foi confirmado no O Editor. Nada foi alterado.", false)
+    end
+    local created_epoch = iso_to_epoch(plan.created_at)
+    if created_epoch == nil or utc_now_epoch() - created_epoch > M.TAKE_ZOOM_PLAN_MAX_AGE_SECONDS then
+        check("plan_age", "FAILED", tostring(plan.created_at))
+        return outcome("BLOCKED", "O pedido de zoom expirou. Aplique novamente no O Editor.", false)
+    end
+    check("plan_age", "PASSED", tostring(plan.created_at))
+    local items = type(plan.items) == "table" and plan.items or {}
+    details.items_total = #items
+    if #items == 0 then
+        check("items", "FAILED", "nenhum item")
+        return outcome("BLOCKED", "Nenhum take para alterar. Nada foi alterado.", false)
+    end
+    if not runtime.context or runtime.timeline == nil or runtime.project == nil then
+        check("resolve_context", "FAILED", runtime.context_error)
+        return outcome("BLOCKED", "Nenhuma timeline ativa disponível. Nada foi alterado.", false)
+    end
+    local expected = plan.timeline or {}
+    local timeline = runtime.timeline
+    local live_id = tostring((M.call_method(timeline, "GetUniqueId")) or "")
+    local live_name = tostring((M.call_method(timeline, "GetName")) or "")
+    details.timeline_id = live_id
+    details.timeline_name = live_name
+    if runtime.context.project_name ~= expected.project_name
+            or live_id == "" or live_id ~= tostring(expected.timeline_id or "")
+            or live_name ~= expected.timeline_name then
+        check("context_match", "FAILED", live_name .. " / " .. live_id)
+        return outcome("BLOCKED", "A timeline ativa não é a do zoom (" .. tostring(expected.timeline_name)
+            .. "). Abra essa timeline e tente novamente. Nada foi alterado.", false)
+    end
+    check("context_match", "PASSED", live_name)
+    if not M.is_o_editor_timeline_name(live_name) then
+        check("o_editor_timeline", "FAILED", live_name)
+        return outcome("BLOCKED", "O zoom só é aplicado em timelines criadas pelo O Editor. "
+            .. "A timeline original não é alterada. Nada foi alterado.", false)
+    end
+    check("o_editor_timeline", "PASSED", live_name)
+
+    local live = {}
+    for _, entry in ipairs(collect_items(timeline)) do
+        if entry.track_type == "video" then
+            local id = M.call_method(entry.item, "GetUniqueId")
+            if id ~= nil then live[tostring(id)] = entry end
+        end
+    end
+    local resolved = {}
+    for index, planned in ipairs(items) do
+        local entry = live[tostring(planned.item_id)]
+        local start_frame = entry and tonumber((M.call_method(entry.item, "GetStart", false)))
+        local end_frame = entry and tonumber((M.call_method(entry.item, "GetEnd", false)))
+        if entry == nil or entry.track_index ~= tonumber(planned.track_index)
+                or start_frame ~= tonumber(planned.start_frame) or end_frame ~= tonumber(planned.end_frame) then
+            check("layout_match", "FAILED", tostring(planned.item_id))
+            return outcome("BLOCKED", "A timeline mudou desde a prévia do zoom (item "
+                .. tostring(planned.item_id) .. "). Clique em Atualizar timeline e tente novamente. Nada foi alterado.", false)
+        end
+        local current = M.read_zoom(entry.item)
+        if type(planned.expect) == "table" and not M.zoom_matches(current, planned.expect) then
+            check("current_values", "FAILED", tostring(planned.item_id))
+            return outcome("BLOCKED", "O zoom de um take foi alterado depois da última aplicação (item "
+                .. tostring(planned.item_id) .. "). O desfazer foi cancelado para não apagar esse ajuste. Nada foi alterado.", false)
+        end
+        resolved[index] = {item = entry.item, planned = planned, before = current}
+    end
+    check("layout_match", "PASSED", tostring(#items) .. " itens conferidos")
+    if undo then check("current_values", "PASSED", "valores atuais iguais aos aplicados") end
+
+    local function guard()
+        local current = M.call_method(runtime.project, "GetCurrentTimeline")
+        return current ~= nil and tostring((M.call_method(current, "GetUniqueId")) or "") == live_id
+    end
+    local function rollback(count)
+        local restored = true
+        for index = count, 1, -1 do
+            local entry = resolved[index]
+            if not M.set_zoom(entry.item, entry.before) then restored = false end
+        end
+        details.rolled_back = restored
+        return restored
+    end
+    for index, entry in ipairs(resolved) do
+        if not guard() then
+            local restored = rollback(index - 1)
+            check("result", "FAILED", "timeline ativa mudou")
+            return outcome("FAILED", "A timeline ativa mudou durante o zoom. "
+                .. (restored and "Os takes já alterados voltaram ao valor anterior." or "Confira os takes: nem todos puderam voltar."), index > 1)
+        end
+        if not M.set_zoom(entry.item, entry.planned.set or {}) then
+            local restored = rollback(index)
+            check("set_zoom", "FAILED", tostring(entry.planned.item_id))
+            return outcome("FAILED", "O Resolve não confirmou o zoom do item " .. tostring(entry.planned.item_id) .. ". "
+                .. (restored and "Todos os takes voltaram ao valor anterior." or "Confira os takes: nem todos puderam voltar."), true)
+        end
+        details.journal[index] = {
+            item_id = tostring(entry.planned.item_id),
+            track_index = tonumber(entry.planned.track_index),
+            take_index = tonumber(entry.planned.take_index) or JSON_NULL,
+            start_frame = tonumber(entry.planned.start_frame),
+            end_frame = tonumber(entry.planned.end_frame),
+            before = entry.before,
+            after = (M.read_zoom(entry.item)),
+        }
+        details.items_applied = index
+    end
+    check("set_zoom", "PASSED", tostring(#resolved) .. " itens alterados e conferidos")
+    local message = undo
+        and ("Zoom desfeito em " .. tostring(#resolved) .. " itens de " .. live_name .. ", conferidos no Resolve.")
+        or ("Zoom aplicado em " .. tostring(#resolved) .. " itens de " .. live_name .. ", conferidos no Resolve.")
+    return outcome("SUCCESS", message, true, {
+        label .. ": " .. live_name,
+        "Itens alterados e conferidos: " .. tostring(#resolved),
+        "Somente Zoom e Anchor Point foram alterados; a timeline original não foi tocada.",
+    })
+end
+
+function M.run_take_zoom_action(base, plan_path)
+    return M.run_internal_action("apply_take_zoom", function(runtime)
+        local plan_ok, plan = pcall(M.read_json, plan_path)
+        if not plan_ok or type(plan) ~= "table" then
+            return {status = "FAILED", message = "O pedido de zoom não pôde ser lido. Nada foi alterado.",
+                details = {plan_path = plan_path, error = tostring(plan)}}
+        end
+        runtime.correlation = {plan_id = plan.plan_id, mode = plan.mode}
+        local applied_marker = base .. "/plans/applied/" .. tostring(plan.plan_id) .. ".json"
+        if M.file_exists(applied_marker) then
+            return {status = "BLOCKED", message = "Este pedido de zoom já foi executado. Nada foi alterado.",
+                details = {plan_path = plan_path, applied_marker = applied_marker,
+                    purpose = plan.purpose, undo_of = plan.undo_of or JSON_NULL}}
+        end
+        local result = M.apply_take_zoom(runtime, plan, function(message)
+            M.append_log(runtime.log_path, message)
+        end)
+        result.details.plan_path = plan_path
+        if result.mutations_executed then
+            local marker_ok, marker_error = pcall(M.write_json, applied_marker, {
+                plan_id = plan.plan_id, status = result.status, purpose = plan.purpose,
+                timeline_id = result.details.timeline_id, applied_at = M.timestamp()})
+            if not marker_ok then
+                result.details.warnings[#result.details.warnings + 1] =
+                    "O recibo do zoom não pôde ser salvo: " .. tostring(marker_error)
+            end
+            os.rename(plan_path, base .. "/plans/take-zoom-" .. tostring(plan.plan_id) .. "-done.json")
+        end
+        return result
+    end, {log_name = "internal-takezoom", script_path = base .. "/internal_common.lua",
+        script_version = M.COMMON_VERSION, build_hash = M.COMMON_HASH})
 end
 
 -- Auxiliary commands live outside the Resolve menu tree. A request is consumed
@@ -1664,6 +1959,17 @@ function M.dispatch_menu_action(base, expected_plan_id, expected_mode, on_starte
     if not age or age < -60 or age > 300 then
         print("O EDITOR: solicitação expirada; abrindo somente a interface.")
         return false
+    end
+    if request.action == "take_zoom" then
+        local plan_path = base .. "/plans/take-zoom-pending.json"
+        local plan = M.read_json(plan_path)
+        if type(plan) ~= "table" or plan.kind ~= "take_zoom" or plan.plan_id ~= request.plan_id
+            or request.mode ~= "APPLY" or plan.mode ~= "APPLY" or plan.confirmed_by_user ~= true then
+            error("A solicitação não corresponde ao zoom confirmado; nenhuma operação executada.")
+        end
+        if on_started ~= nil then on_started() end
+        M.run_take_zoom_action(base, plan_path)
+        return true
     end
     if request.action ~= "rough_cut" then
         error("Ação do menu não permitida.")

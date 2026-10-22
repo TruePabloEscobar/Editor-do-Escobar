@@ -177,7 +177,9 @@ def save_plan_for_resolve(
     return pending
 
 
-def cancel_plan_for_resolve(*, plan_id: str, mode: str, directory: Path | None = None) -> bool:
+def cancel_plan_for_resolve(
+    *, plan_id: str, mode: str, directory: Path | None = None, action: str = "rough_cut"
+) -> bool:
     """Claim and archive only a matching request that Resolve has not consumed."""
     root = directory or plans_directory()
     request = root / "menu-action.json"
@@ -193,7 +195,7 @@ def cancel_plan_for_resolve(*, plan_id: str, mode: str, directory: Path | None =
         payload = json.loads(cancelled.read_text(encoding="utf-8"))
         if not isinstance(payload, dict) or (
             payload.get("schema_version") != 1
-            or payload.get("action") != "rough_cut"
+            or payload.get("action") != action
             or payload.get("plan_id") != plan_id
             or payload.get("mode") != mode
         ):

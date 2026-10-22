@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
+import logging
 import sys
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +18,7 @@ from PySide6.QtWidgets import (
     QPushButton,
 )
 
+from o_editor.application.take_zoom import record_rough_cut_outcome
 from o_editor.bootstrap import bootstrap, project_root
 from o_editor.errors import OEditorError
 from o_editor.internal_actions.ipc import LocalIpcServer, send_ipc_message, server_name
@@ -27,6 +31,9 @@ from o_editor.internal_actions.request import (
     processed_marker_path,
 )
 from o_editor.ui.main_window import MainWindow, _load_context
+
+STARTUP_LOGGER = logging.getLogger("o_editor.startup")
+LOGGER = logging.getLogger(__name__)
 
 
 class InternalActionMainWindow(MainWindow):
@@ -58,7 +65,7 @@ class InternalActionMainWindow(MainWindow):
                         continue
                     request = load_internal_action_request(path)
                     if (
-                        request.action != "apply_rough_cut"
+                        request.action not in {"apply_rough_cut", "apply_take_zoom"}
                         or request.request_id in self._processed_request_ids
                         or processed_marker_path(path, request.request_id).exists()
                     ):
@@ -148,7 +155,10 @@ class InternalActionMainWindow(MainWindow):
         self._active_report_path = Path(request.report_file) if request.report_file else None
         self._active_log_path = Path(request.log_file) if request.log_file else None
         context = request.details.get("context")
-        if isinstance(context, dict) and request.action != "apply_rough_cut":
+        if isinstance(context, dict) and request.action not in {
+            "apply_rough_cut",
+            "apply_take_zoom",
+        }:
             self._apply_context(
                 {
                     **context,
@@ -166,8 +176,12 @@ class InternalActionMainWindow(MainWindow):
             rendered += "\n\nEsta request já havia sido processada; o resultado foi reapresentado."
         self._report.setPlainText(rendered)
         if request.action == "apply_rough_cut":
+            self._remember_rough_cut(request)
             if self._transcript_panel.display_rough_cut_result(request):
                 self._navigate(3)
+        elif request.action == "apply_take_zoom":
+            if self._take_zoom_panel.display_result(request):
+                self._navigate(4)
         elif request.action != "open":
             self._show_diagnostics()
         self._open_action_report_button.setVisible(
@@ -187,6 +201,15 @@ class InternalActionMainWindow(MainWindow):
             "status": request.status,
             "duplicate": duplicate,
         }
+
+    def _remember_rough_cut(self, request: InternalActionRequest) -> None:
+        """Register the created timeline (zoom eligibility, cut points, zoom undo)."""
+        if request.status != "SUCCESS":
+            return
+        try:
+            record_rough_cut_outcome(request.details, project_name=request.project)
+        except (OEditorError, OSError, TypeError, ValueError):
+            LOGGER.warning("rough_cut_registry_failed", exc_info=True)
 
     def _display_result_file(self, path: Path, result_type: str) -> None:
         try:
@@ -231,9 +254,12 @@ def run_ui(
     capability_result: str | None = None,
     apply_result: str | None = None,
 ) -> int:
+    timer = StartupTimer()
     app = QApplication.instance() or QApplication(sys.argv)
+    timer.mark("qapplication")
     config = bootstrap()
     root = project_root()
+    timer.mark("bootstrap")
     startup_message = _startup_ipc_message(
         context_path=context_path,
         internal_host=internal_host,
@@ -246,7 +272,9 @@ def run_ui(
     )
     ipc_name = server_name(root)
     response = send_ipc_message(ipc_name, startup_message)
+    timer.mark("ipc_probe")
     if response is not None:
+        timer.log("forwarded_to_running_instance", startup_message)
         if response.get("ok") is not True:
             print(f"O Editor: a instância existente recusou a ação: {response.get('error')}")
             return 1
@@ -267,6 +295,7 @@ def run_ui(
             else None
         ),
     )
+    timer.mark("window")
     ipc_server = LocalIpcServer(ipc_name, window.handle_ipc_message, window)
     if not ipc_server.listen():
         response = send_ipc_message(ipc_name, startup_message, timeout_ms=3000)
@@ -281,10 +310,50 @@ def run_ui(
             window.handle_ipc_message(startup_message)
         except OEditorError as exc:
             window._report.setPlainText(f"Falha controlada ao abrir a ação interna: {exc}")
+    timer.mark("startup_message")
     window.show()
+    timer.mark("show")
+    QTimer.singleShot(0, lambda: timer.log("first_event_loop", startup_message))
     exit_code = int(app.exec())
     ipc_server.close()
     return exit_code
+
+
+class StartupTimer:
+    """Phase timings written to the technical log (no transcript content)."""
+
+    def __init__(self) -> None:
+        self._started = time.perf_counter()
+        self._marks: list[tuple[str, float]] = []
+
+    def mark(self, name: str) -> None:
+        self._marks.append((name, time.perf_counter() - self._started))
+
+    def log(self, outcome: str, message: dict[str, Any]) -> None:
+        self.mark(outcome)
+        phases = " ".join(f"{name}={elapsed * 1000:.0f}ms" for name, elapsed in self._marks)
+        STARTUP_LOGGER.info(
+            "startup_timing type=%s %s request_age_ms=%s",
+            message.get("type"),
+            phases,
+            _request_age_ms(message),
+        )
+
+
+def _request_age_ms(message: dict[str, Any]) -> str:
+    """Time since the Resolve script created the request (launch latency)."""
+
+    path = message.get("path")
+    if message.get("type") != "internal_action_request" or not path:
+        return "n/a"
+    try:
+        created = json.loads(Path(str(path)).read_text(encoding="utf-8")).get("created_at")
+        stamp = datetime.fromisoformat(str(created).replace("Z", "+00:00"))
+    except (OSError, UnicodeError, ValueError, AttributeError):
+        return "n/a"
+    if stamp.tzinfo is None:
+        return "n/a"
+    return f"{(datetime.now(UTC) - stamp).total_seconds() * 1000:.0f}"
 
 
 def _startup_ipc_message(

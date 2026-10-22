@@ -118,12 +118,17 @@ function Timeline:add_item(track_type, track_index, spec)
         effective_stream = spec.effective_stream or 1,
         fusion = spec.fusion,
         speed = spec.speed,
-        props = spec.props,
+        props = nil,
         color = spec.color,
         track_type = track_type,
         track_index = track_index,
         timeline = self,
     }, TimelineItem)
+    -- Each item owns its properties (DuplicateTimeline must not share tables).
+    if spec.props then
+        item.props = {}
+        for key, value in pairs(spec.props) do item.props[key] = value end
+    end
     local items = self.tracks[track_type][track_index].items
     items[#items + 1] = item
     table.sort(items, function(a, b) return a.start < b.start end)

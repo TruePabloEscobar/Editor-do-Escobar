@@ -155,9 +155,11 @@ class RebuildOperation:
     clip_name: str
     enabled: bool = True
     link_group: str | None = None
+    # Zoom per take (ZoomX/ZoomY/AnchorPointX/AnchorPointY); None leaves the copy as is.
+    zoom: Mapping[str, float] | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        value: dict[str, Any] = {
             "op_id": self.op_id,
             "track_type": self.track_type.value,
             "track_index": self.track_index,
@@ -173,6 +175,9 @@ class RebuildOperation:
             "enabled": self.enabled,
             "link_group": self.link_group,
         }
+        if self.zoom is not None:
+            value["zoom"] = dict(self.zoom)
+        return value
 
 
 @dataclass(frozen=True, slots=True)
@@ -219,6 +224,8 @@ class RoughCutPlan:
     issues: tuple[PlanIssue, ...] = field(default=())
     microphone_cleanup: MicrophoneCleanupSettings = field(default_factory=MicrophoneCleanupSettings)
     microphone_mutes: tuple[MicrophoneMute, ...] = ()
+    # Settings and summary of the zoom per take applied together with the cut.
+    take_zoom: Mapping[str, Any] | None = None
 
     @property
     def blocked(self) -> bool:
@@ -226,7 +233,7 @@ class RoughCutPlan:
 
     def to_dict(self, *, mode: str = "VALIDATE", confirmed_by_user: bool = False) -> dict[str, Any]:
         layout = self.layout
-        return {
+        value: dict[str, Any] = {
             "schema_version": PLAN_SCHEMA_VERSION,
             "kind": "rough_cut",
             "plan_id": self.plan_id,
@@ -293,6 +300,9 @@ class RoughCutPlan:
             "stats": self.stats.to_dict(),
             "issues": [issue.render() for issue in self.issues],
         }
+        if self.take_zoom is not None:
+            value["take_zoom"] = dict(self.take_zoom)
+        return value
 
 
 def build_rough_cut_plan(

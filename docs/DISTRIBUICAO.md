@@ -38,9 +38,15 @@ Turbo: https://huggingface.co/dropbox-dash/faster-whisper-large-v3-turbo.
 - **Preparar pacote EDE.bat**: gera ZIP e SHA-256 em `dist/`, sem publicar.
 - **Publicar EDE no GitHub.bat**: executa o gate obrigatório; se passar, gera o pacote,
   envia um snapshot de fontes para `main` no repositório acima e cria uma release
-  **em rascunho**, com ZIP e checksum. Requer Git, GitHub CLI e `gh auth login`.
-  Você revisa e libera a release pelo GitHub. Não faz force-push nem altera o checkout
+  **pública**, com ZIP, checksum e resumo dos testes. Requer Git, GitHub CLI e `gh auth login`.
+  Não faz force-push nem altera o checkout
   local sujo; utiliza um clone temporário. Não envia o histórico local anterior.
+
+O snapshot público contém o aplicativo, instaladores, documentação de uso e testes
+sintéticos. Auditorias locais, instruções internas, histórico de produção e registros
+locais de QA ficam fora. No clone temporário, arquivos antigos fora dessa seleção
+são removidos da versão atual; o histórico remoto existente é preservado.
+Use `Publicar EDE no GitHub.bat --check` para conferir sem enviar.
 
 Arquivos são selecionados por raízes/extensões permitidas e um manifesto SHA-256.
 Não inclui `.venv`, runtime, caches, sessões, modelos, mídias, tokens ou `nul`.
@@ -62,7 +68,7 @@ Um travamento anterior do executor real é rastreado em BUG-0017 e permanece
 pendente de automação; não é resolvido pela existência deste instalador.
 
 Os testes locais não substituem uma instalação em outro computador nem validação
-editorial no Resolve. Resultados desta auditoria: `docs/AUDITORIA_RELEASE_2026-10-19.md`.
+editorial no Resolve. A release registra somente o resumo dos testes, sem caminhos locais.
 
 
 As versões de runtime testadas estão fixadas em requirements/runtime-windows.txt.

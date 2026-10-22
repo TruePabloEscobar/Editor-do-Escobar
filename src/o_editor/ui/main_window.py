@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 import sys
+import threading
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
@@ -12,10 +13,13 @@ from typing import Any
 
 from PySide6.QtCore import (
     QModelIndex,
+    QObject,
     QPersistentModelIndex,
     QSize,
     QSortFilterProxyModel,
+    Qt,
     QThread,
+    Signal,
 )
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
@@ -51,6 +55,7 @@ from o_editor.application.generate_report import (
 from o_editor.bootstrap import bootstrap, project_root
 from o_editor.domain.enums import ChannelMode
 from o_editor.domain.models import ApplicationReport, CapabilityResult, Suggestion
+from o_editor.domain.take_zoom import TakeZoomSettings
 from o_editor.domain.voice_tracks import (
     AudioTrackSnapshot,
     SelectedVoiceTrack,
@@ -85,11 +90,13 @@ from o_editor.infrastructure.transcription.base import (
 from o_editor.infrastructure.transcription.faster_whisper import FasterWhisperProvider
 from o_editor.infrastructure.transcription.mock import MockTranscriptionProvider
 from o_editor.infrastructure.voice_track_settings import VoiceTrackSettingsStore
+from o_editor.ui.about_window import DEVELOPER_URL
 from o_editor.ui.capability_dialog import CapabilityDialog
 from o_editor.ui.controllers.workers import AnalysisWorker, ApplyWorker, ContextRefreshWorker
 from o_editor.ui.models.suggestion_model import SuggestionTableModel
 from o_editor.ui.settings_window import SettingsDialog
-from o_editor.ui.theme import STYLESHEET, BrandHeader
+from o_editor.ui.take_zoom_panel import TakeZoomPanel
+from o_editor.ui.theme import PALETTE, STYLESHEET, BrandHeader
 from o_editor.ui.theme import label as ui_label
 from o_editor.ui.transcript_panel import TranscriptPanel
 from o_editor.ui.voice_track_selector import VoiceTrackSelector
@@ -107,6 +114,12 @@ class SuggestionFilterModel(QSortFilterProxyModel):
         index = self.sourceModel().index(source_row, 2, source_parent)
         value = str(self.sourceModel().data(index)).casefold()
         return value.startswith(selected)
+
+
+class _ProbeRelay(QObject):
+    """Carries a background probe result to the UI thread (queued signal)."""
+
+    finished = Signal(str, str)
 
 
 class MainWindow(QMainWindow):
@@ -274,9 +287,22 @@ class MainWindow(QMainWindow):
             use_mock=self._use_mock,
             context_provider=lambda: self._context,
             selected_tracks_provider=lambda: self._voice_selector.selected_tracks(),
+            take_zoom_provider=self._take_zoom_for_rough_cut,
         )
         self._transcript_panel.stage_requested.connect(self._navigate)
         self._transcript_panel.activity_changed.connect(self._update_refresh_availability)
+        self._take_zoom_panel = TakeZoomPanel(
+            config=self._config,
+            root=self._root,
+            use_mock=self._use_mock,
+            plan_provider=lambda: self._transcript_panel.plan,
+            busy_provider=lambda: self._transcript_panel.request_pending,
+        )
+        self._transcript_panel.set_external_busy(lambda: self._take_zoom_panel.request_pending)
+        self._take_zoom_panel.settings_changed.connect(self._transcript_panel.take_zoom_changed)
+        self._transcript_panel.plan_changed.connect(self._take_zoom_panel.plan_changed)
+        self._take_zoom_panel.activity_changed.connect(self._update_refresh_availability)
+        self._transcript_panel.activity_changed.connect(self._take_zoom_panel.busy_changed)
         suggestions_page = QWidget()
         suggestions_layout = QVBoxLayout(suggestions_page)
         suggestions_layout.setContentsMargins(26, 20, 26, 16)
@@ -349,6 +375,7 @@ class MainWindow(QMainWindow):
         self._tabs.tabBar().hide()
         self._tabs.addTab(self._transcript_panel, "Transcrição e Rough Cut")
         self._tabs.addTab(suggestions_page, "Sugestões de zoom e texto")
+        self._tabs.addTab(self._take_zoom_panel, "Zoom por take")
         self._workspace.addWidget(self._tabs)
 
         diagnostics = QWidget(self)
@@ -398,6 +425,17 @@ class MainWindow(QMainWindow):
         footer.addWidget(self._cancel_button)
         root_layout.addWidget(self._analysis_footer)
         self._analysis_footer.hide()
+        # Fixed credit line at the bottom, outside the step pages.
+        self._credit_label = QLabel(
+            f'Desenvolvido por: <a style="color: {PALETTE["sand"]}" '
+            f'href="{DEVELOPER_URL}">Pablo Escobar</a>'
+        )
+        self._credit_label.setObjectName("developerCredit")
+        self._credit_label.setTextFormat(Qt.TextFormat.RichText)
+        self._credit_label.setOpenExternalLinks(True)
+        self._credit_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._credit_label.setContentsMargins(0, 2, 0, 4)
+        root_layout.addWidget(self._credit_label)
         self._voice_selector.selection_changed.connect(self._voice_selection_changed)
         self._analyze_button.clicked.connect(self._start_analysis)
         self._manual_audio_button.clicked.connect(self._select_wav)
@@ -456,7 +494,7 @@ class MainWindow(QMainWindow):
                     external_fusionscript_bridge=ComponentState.UNVERIFIED
                     if self._external_bridge_enabled
                     else ComponentState.DISABLED,
-                    ffmpeg=ComponentState(self._ffmpeg_label.text()),
+                    ffmpeg=_component_state(self._ffmpeg_label.text()),
                     whisper=ComponentState.READY,
                 ).overall.value
             )
@@ -472,11 +510,16 @@ class MainWindow(QMainWindow):
             self._workspace.setCurrentIndex(0)
         else:
             self._workspace.setCurrentIndex(1)
-            self._tabs.setCurrentIndex(1 if step >= 4 else 0)
+            # Zoom (4) is the zoom-per-take step; captions (5) keep the suggestion list.
+            self._tabs.setCurrentIndex({4: 2, 5: 1}.get(step, 0))
             if step < 4:
                 self._transcript_panel.set_stage(step - 1)
-            else:
-                self._set_suggestion_mode("zoom" if step == 4 else "text")
+            elif step == 5:
+                self._set_suggestion_mode("text")
+
+    def _take_zoom_for_rough_cut(self) -> TakeZoomSettings | None:
+        panel = getattr(self, "_take_zoom_panel", None)
+        return panel.settings_for_rough_cut() if panel is not None else None
 
     def _set_suggestion_mode(self, kind: str) -> None:
         self._suggestion_kind = kind
@@ -511,16 +554,12 @@ class MainWindow(QMainWindow):
             self._duration_label.setText(f"{duration:.1f} segundos")
         if self._context.get("fps"):
             self._fps_label.setText(str(self._context["fps"]))
-        ffmpeg = FFmpegRunner(
-            ffmpeg_path=(
-                Path(self._config.ffmpeg.ffmpeg_path) if self._config.ffmpeg.ffmpeg_path else None
-            ),
-            ffprobe_path=(
-                Path(self._config.ffmpeg.ffprobe_path) if self._config.ffmpeg.ffprobe_path else None
-            ),
-        ).version()
-        ffmpeg_state = ComponentState.READY if ffmpeg else ComponentState.PENDING
+        # The version probe spawns ffmpeg.exe; it runs off the UI thread so the
+        # window paints immediately (BUG-0031). The label stays PENDING meanwhile.
+        ffmpeg_state = ComponentState.PENDING
         self._ffmpeg_label.setText(ffmpeg_state.value)
+        self._ffmpeg_label.setToolTip("Verificando o FFmpeg…")
+        self._start_ffmpeg_probe()
         whisper_ready = self._use_mock or bool(
             self._config.transcription.model_path
             and Path(self._config.transcription.model_path).exists()
@@ -555,6 +594,40 @@ class MainWindow(QMainWindow):
         )
         self._refresh_voice_tracks()
 
+    def _start_ffmpeg_probe(self) -> None:
+        runner = FFmpegRunner(
+            ffmpeg_path=(
+                Path(self._config.ffmpeg.ffmpeg_path) if self._config.ffmpeg.ffmpeg_path else None
+            ),
+            ffprobe_path=(
+                Path(self._config.ffmpeg.ffprobe_path) if self._config.ffmpeg.ffprobe_path else None
+            ),
+        )
+        relay = _ProbeRelay(self)
+        relay.finished.connect(self._ffmpeg_probed)
+        self._ffmpeg_relay = relay
+
+        def probe() -> None:
+            try:
+                version = runner.version()
+                state, detail = (
+                    (ComponentState.READY, version)
+                    if version
+                    else (ComponentState.PENDING, "FFmpeg não encontrado.")
+                )
+            except OEditorError as exc:
+                state, detail = ComponentState.FAILED, str(exc)
+            try:
+                relay.finished.emit(state.value, detail or "")
+            except RuntimeError:
+                return  # Window closed before the probe finished.
+
+        threading.Thread(target=probe, name="ffmpeg-probe", daemon=True).start()
+
+    def _ffmpeg_probed(self, state: str, detail: str) -> None:
+        self._ffmpeg_label.setText(state)
+        self._ffmpeg_label.setToolTip(detail)
+
     def _apply_context(self, context: dict[str, Any]) -> None:
         self._context = context
         self._internal_host = context.get("integration_mode") == "internal_resolve_host"
@@ -578,6 +651,7 @@ class MainWindow(QMainWindow):
             self._busy
             or self._refresh_thread is not None
             or self._transcript_panel.operation_active
+            or self._take_zoom_panel.operation_active
         )
         self._refresh_timeline_button.setEnabled(not blocked and not self._use_mock)
         self._settings_button.setEnabled(not blocked)
@@ -641,7 +715,11 @@ class MainWindow(QMainWindow):
         self._update_refresh_availability()
 
     def closeEvent(self, event: Any) -> None:
-        if self._refresh_thread is not None or self._transcript_panel.has_running_worker:
+        if (
+            self._refresh_thread is not None
+            or self._transcript_panel.has_running_worker
+            or self._take_zoom_panel.has_running_worker
+        ):
             self.statusBar().showMessage("Aguarde a operação em andamento terminar para fechar.")
             event.ignore()
             return
@@ -1201,3 +1279,10 @@ def _default_selected_track(track: AudioTrackSnapshot) -> SelectedVoiceTrack:
 def _combo_value(combo: QComboBox) -> str:
     value = combo.currentData()
     return str(value) if value is not None else combo.currentText()
+
+
+def _component_state(text: str) -> ComponentState:
+    try:
+        return ComponentState(text)
+    except ValueError:
+        return ComponentState.PENDING

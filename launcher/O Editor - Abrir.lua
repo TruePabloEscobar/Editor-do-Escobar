@@ -1,15 +1,19 @@
 -- Open O Editor from the internal DaVinci Resolve host.
 
-local SCRIPT_VERSION = "2.4.0"
-local BUILD_HASH = "microphone-clip-state-20261019"
+local SCRIPT_VERSION = "2.5.0"
+local BUILD_HASH = "take-zoom-20261022"
 local appdata = os.getenv("APPDATA")
 local base = appdata and (appdata .. "\\O Editor") or "."
 local log_path = base .. "\\logs\\internal-open.log"
 
 local function raw_log(message)
-    os.execute('cmd.exe /d /c if not exist "' .. base .. '\\logs" mkdir "'
-        .. base .. '\\logs"')
+    -- Only spawn cmd.exe when the log folder is really missing (BUG-0029).
     local handle = io.open(log_path, "ab")
+    if not handle then
+        os.execute('cmd.exe /d /c if not exist "' .. base .. '\\logs" mkdir "'
+            .. base .. '\\logs"')
+        handle = io.open(log_path, "ab")
+    end
     if handle then
         handle:write(os.date("!%Y-%m-%dT%H:%M:%SZ") .. " " .. tostring(message) .. "\n")
         handle:close()

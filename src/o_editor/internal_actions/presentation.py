@@ -15,6 +15,7 @@ def render_internal_action(request: InternalActionRequest) -> str:
         "capability_probe": "Capability probe interno concluído.",
         "apply_plan": "Preflight de aplicação concluído.",
         "apply_rough_cut": "Rough cut processado pelo DaVinci Resolve.",
+        "apply_take_zoom": "Zoom por take processado pelo DaVinci Resolve.",
     }[request.action]
     lines = [
         header,
@@ -53,6 +54,8 @@ def render_internal_action(request: InternalActionRequest) -> str:
             lines.append("Capabilities ausentes: " + ", ".join(str(item) for item in missing))
     elif request.action == "apply_rough_cut":
         lines.extend(_render_rough_cut(request))
+    elif request.action == "apply_take_zoom":
+        lines.extend(_render_take_zoom(request))
     if request.report_file:
         lines.append(f"Relatório: {request.report_file}")
     if request.log_file:
@@ -61,11 +64,7 @@ def render_internal_action(request: InternalActionRequest) -> str:
         [
             "",
             f"Request: {request.request_id}",
-            (
-                "Mutações na timeline: executadas somente na cópia"
-                if request.action == "apply_rough_cut" and request.details.get("created_timeline")
-                else "Mutações na timeline: não executadas"
-            ),
+            _mutation_line(request),
         ]
     )
     return "\n".join(lines)
@@ -135,4 +134,32 @@ def _render_rough_cut(request: InternalActionRequest) -> list[str]:
         lines.append("")
         lines.append("Avisos:")
         lines.extend(f"- {item}" for item in warnings)
+    return lines
+
+
+def _mutation_line(request: InternalActionRequest) -> str:
+    if request.action == "apply_rough_cut" and request.details.get("created_timeline"):
+        return "Mutações na timeline: executadas somente na cópia"
+    if request.action == "apply_take_zoom" and request.details.get("items_applied"):
+        return "Mutações na timeline: somente Zoom/Anchor Point da timeline do O Editor"
+    return "Mutações na timeline: não executadas"
+
+
+def _render_take_zoom(request: InternalActionRequest) -> list[str]:
+    details = request.details
+    purpose = "Desfazer" if details.get("purpose") == "undo" else "Aplicar"
+    lines = [
+        "",
+        f"Operação: {purpose} zoom",
+        f"Timeline: {_detail(details, 'timeline_name')}",
+        "Itens conferidos: "
+        f"{_detail(details, 'items_applied')} de {_detail(details, 'items_total')}",
+    ]
+    if details.get("rolled_back") is True:
+        lines.append("Os itens já alterados voltaram ao valor anterior.")
+    warnings = details.get("warnings")
+    if isinstance(warnings, list):
+        lines.extend(f"Aviso: {item}" for item in warnings)
+    lines.extend(["", "Verificações:"])
+    lines.extend(_render_checks(details.get("checks")))
     return lines

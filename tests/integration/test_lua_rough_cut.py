@@ -372,3 +372,46 @@ def test_microphone_clip_states_are_verified_and_original_is_intact(
             not op.enabled for op in plan.operations
         )
         assert all(x["enabled"] for x in created if x["track_type"] == "video")
+
+
+def test_rough_cut_can_apply_zoom_per_take_together(tmp_path: Path) -> None:
+    from o_editor.domain.take_zoom import TakeZoomSettings, ValueRange, with_take_zoom
+
+    layout = _layout(tmp_path)
+    plan = prepare_rough_cut(
+        _session(layout), silence=SilenceSettings.from_preset(SilencePreset.MEDIUM)
+    )
+    settings = TakeZoomSettings(
+        enabled=True, scale=ValueRange.fixed(140), every=ValueRange.fixed(2), offset_x=25.0
+    )
+    plan = with_take_zoom(plan, settings)
+    assert len(plan.keep_ranges) >= 2
+    path = save_plan_for_resolve(plan, apply=True, directory=tmp_path / "plans")
+    saved = json.loads(path.read_text(encoding="utf-8"))
+    assert saved["take_zoom"]["summary"]["zoomed"] == len(plan.keep_ranges) // 2
+    assert all("zoom" not in op for op in saved["operations"] if op["track_type"] == "audio")
+    output = _run(tmp_path, path, {})
+    result = output["result"]
+    assert result["status"] == "SUCCESS", (result["message"], output["logs"])
+    created = _timeline(output, "Episodio 1_OE_ROUGHCUT_001")
+    starts = [keep.record_start for keep in plan.keep_ranges]
+    for item in created["items"]:
+        if item["track_type"] != "video":
+            assert "ZoomX" not in item["props"]
+            continue
+        take = starts.index(item["start"]) + 1
+        expected = 1.4 if take % 2 == 0 else 1.0
+        assert item["props"]["ZoomX"] == expected and item["props"]["ZoomY"] == expected
+        assert item["props"]["AnchorPointX"] == 25.0
+    details = result["details"]
+    assert details["take_starts"] == starts
+    assert details["take_zoom"]["failures"] == 0
+    assert len(details["take_zoom"]["journal"]) == len(plan.keep_ranges)
+    assert details["take_zoom"]["journal"][0]["before"]["ZoomX"] == 1.1
+    original = _timeline(output, "Episodio 1")
+    assert original["mutation_log"] == ["DuplicateTimeline(source)"]
+    assert all(
+        item["props"].get("ZoomX") == 1.1
+        for item in original["items"]
+        if item["track_type"] == "video"
+    )

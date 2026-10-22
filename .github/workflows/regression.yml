@@ -26,15 +26,11 @@ jobs:
       - name: Gate sem Resolve e sem downloads de modelos
         run: .venv/Scripts/python.exe scripts/run_regression.py
       - name: Artefato de plugin
-        run: .venv/Scripts/python.exe scripts/package_release.py
+        run: .venv/Scripts/python.exe scripts/package_release.py --public
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: evidencias-windows
           path: |
-            runtime/regression/*/report.json
-            runtime/regression/*/junit.xml
-            runtime/regression/*/coverage.xml
-            runtime/regression/*/*.log
             dist/*.zip
             dist/*.sha256

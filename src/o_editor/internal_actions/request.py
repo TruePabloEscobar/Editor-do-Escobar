@@ -21,6 +21,7 @@ ACTION_NAMES = frozenset(
         "capability_probe",
         "apply_plan",
         "apply_rough_cut",
+        "apply_take_zoom",
     }
 )
 REQUEST_STATUSES = frozenset({"SUCCESS", "BLOCKED", "FAILED", "CANCELLED", "UNSUPPORTED"})

@@ -2,7 +2,7 @@
 
 Desenvolvido por [Pablo Escobar](https://pabloescobardj.web.app/Wikipedia-Pablo-Escobar.html).
 
-Para instalar o plugin via script no Windows, baixe o ZIP da release, extraia e execute
+Para instalar o plugin via script no Windows, [baixe o ZIP da versão atual](https://github.com/TruePabloEscobar/Editor-do-Escobar/releases/latest), extraia e execute
 **Instalar EDE.bat**. Requer Python 3.11 x64, FFmpeg/ffprobe no PATH e DaVinci Resolve
 Studio 21. Na engrenagem, use **Baixar modelo…** e consulte **Sobre** para o tutorial.
 [Distribuição, instalação e limites](docs/DISTRIBUICAO.md).

@@ -212,8 +212,8 @@ def test_installer_manifest_tracks_source_release_instead_of_stale_constant(tmp_
     for lua in (source_root / "launcher").glob("*.lua"):
         text = (
             lua.read_text(encoding="utf-8")
-            .replace("2.4.0", "9.9.9")
-            .replace("microphone-clip-state-20261019", "fixture-release")
+            .replace("2.5.0", "9.9.9")
+            .replace("take-zoom-20261022", "fixture-release")
         )
         lua.write_text(text, encoding="utf-8")
     app_data = tmp_path / "profile"

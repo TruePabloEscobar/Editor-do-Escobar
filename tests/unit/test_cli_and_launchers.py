@@ -79,10 +79,10 @@ def test_internal_lua_launchers_are_safe_and_complete() -> None:
         re.search(r'local BUILD_HASH = "([^"]+)"', (root / name).read_text("utf-8"))[1]
         for name in expected
     }
-    assert script_versions == {"2.4.0"}
-    assert build_hashes == {"microphone-clip-state-20261019"}
-    assert 'M.COMMON_VERSION = "2.4.0"' in common_text
-    assert 'M.COMMON_HASH = "microphone-clip-state-20261019"' in common_text
+    assert script_versions == {"2.5.0"}
+    assert build_hashes == {"take-zoom-20261022"}
+    assert 'M.COMMON_VERSION = "2.5.0"' in common_text
+    assert 'M.COMMON_HASH = "take-zoom-20261022"' in common_text
     assert "schema_version = layout and 3 or 2" in common_text
     assert "function M.capture_layout(timeline)" in common_text
     assert "audio_track_count = audio_track_count" in common_text

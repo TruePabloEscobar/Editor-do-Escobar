@@ -43,7 +43,12 @@ def window(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("width", [1000, 1280])
-def test_zoom_and_captions_approve_and_export_only_their_own_scope(window, tmp_path, width):
+def test_zoom_step_is_zoom_per_take_and_captions_keep_their_own_scope(window, tmp_path, width):
+    """2026-10-22 (pedido do usuário): a etapa Zoom virou o zoom por take.
+
+    Antes ela mostrava as sugestões heurísticas de zoom; a lista de sugestões ficou
+    só para Legendas. Continua valendo: aprovar/exportar legendas nunca inclui zoom.
+    """
     value, app = window
     value.resize(width, 680)
     result = analyze_with_mock(value._config, tmp_path / "analysis")
@@ -52,17 +57,12 @@ def test_zoom_and_captions_approve_and_export_only_their_own_scope(window, tmp_p
     assert all("Diagnóstico" not in b.text() for b in value._workflow_buttons)
     value._workflow_buttons[4].click()
     app.processEvents()
-    assert value._zoom_intensity.isVisible()
-    assert not value._text_frequency.isVisible()
-    assert value._proxy.rowCount() > 0
-    value._approve_suggestions_button.click()
+    assert value._tabs.currentWidget() is value._take_zoom_panel
+    assert value._take_zoom_panel.enabled_check.isVisible()
+    assert not value._zoom_intensity.isVisible()
     zoom_approvals = {
         s.id: s.approved for s in value._model.suggestions if s.kind == SuggestionKind.ZOOM
     }
-    assert all(zoom_approvals.values())
-    assert not any(s.approved for s in value._model.suggestions if s.kind == SuggestionKind.TEXT)
-    saved = tmp_path / "O Editor/plans/latest-approved-plan.json"
-    assert json.loads(saved.read_text(encoding="utf-8"))["texts"] == []
     value._workflow_buttons[5].click()
     app.processEvents()
     button = value._workflow_buttons[5]
@@ -71,9 +71,10 @@ def test_zoom_and_captions_approve_and_export_only_their_own_scope(window, tmp_p
     assert not value._zoom_intensity.isVisible()
     assert all(s.kind == SuggestionKind.TEXT for s in value._current_suggestions())
     value._approve_suggestions_button.click()
+    saved = tmp_path / "O Editor/plans/latest-approved-plan.json"
     captions = json.loads(saved.read_text(encoding="utf-8"))
     assert captions["texts"] and captions["zooms"] == []
-    # The explicit apply/save path also excludes approved zooms hidden in the other section.
+    # The explicit apply/save path also excludes zoom suggestions.
     from o_editor.infrastructure.resolve.mock_adapter import MockResolveAdapter
 
     value._adapter = MockResolveAdapter()
@@ -86,8 +87,6 @@ def test_zoom_and_captions_approve_and_export_only_their_own_scope(window, tmp_p
     } == zoom_approvals
     value._reject_suggestions_button.click()
     assert not any(s.approved for s in value._current_suggestions())
-    value._workflow_buttons[4].click()
-    assert all(s.approved for s in value._current_suggestions())
 
 
 def test_diagnostics_is_inside_settings_and_closing_keeps_reports(window):

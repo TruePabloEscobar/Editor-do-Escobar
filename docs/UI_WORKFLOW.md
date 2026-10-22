@@ -62,8 +62,10 @@ Silêncio mínimo e margens antes/depois da fala têm um knob e um valor editáv
 sincronizados. Tempo mostra milissegundos abaixo de 1 s e segundos a partir de 1 s
 (por exemplo, 250 ms e 1,2 s). O campo aceita vírgula ou ponto e unidades explícitas.
 
-A alternância Tempo / Frames usa o FPS da timeline carregada; Frames só fica
-disponível após o carregamento. Em Frames, knob, digitação e setas usam quadros
+A alternância Frames / Tempo usa o FPS da timeline carregada. Frames vem primeiro e é
+a unidade padrão: abre selecionado assim que a timeline é carregada. Sem timeline, os
+valores aparecem em Tempo e a preferência por Frames é restaurada ao carregar; um clique
+explícito em Tempo é respeitado até o fechamento. Em Frames, knob, digitação e setas usam quadros
 inteiros. Alternar unidades ou atualizar o FPS apenas muda a representação, sem
 alterar a duração; editar um valor invalida a prévia e escolhe Personalizada.
 Os limites e presets anteriores permanecem. A configuração continua serializada
@@ -73,7 +75,8 @@ para cima/baixo; Shift permite ajuste fino, setas e roda também funcionam. Dupl
 clique restaura o valor padrão do controle. A antiga propriedade técnica `slider`
 é um alias do knob para compatibilidade das verificações existentes.
 
-Silêncios, Microfones/retorno e Faixas na cópia ficam em abas no topo da prévia;
+Silêncios e Faixas na cópia ficam em abas no topo da prévia (a limpeza de
+microfones/retorno é uma opção da aba Silêncios, sem aba própria, desde 2026-10-22);
 o plano ocupa toda a largura abaixo. Campos editáveis e controles de aplicação
 foram conferidos em 1000x680 e 1280x820. As funções continuam disponíveis sem
 a coluna lateral. Aprovação estética e usabilidade pelo usuário continuam pendentes.
@@ -95,16 +98,22 @@ de recuperação; uma execução já iniciada não é reaplicada pelo menu sozin
 ## Microfones e visual de impressão
 
 Limpeza opcional por trecho e referência grunge punk: docs/MICROPHONE_CLEANUP.md.
-O controle fica na aba Microfones/retorno, no topo da Prévia e cortes, e lembra a escolha.
+O controle fica na aba Silêncios, junto às demais opções, no topo da Prévia e cortes,
+e lembra a escolha.
 Mudá-lo exige nova prévia. Risos e sons intencionais são preservados.
 
 
 ## Zoom, Legendas e diagnóstico
 
-Zoom e Legendas compartilham os resultados da análise, mas cada seção mostra seus
-próprios controles e sugestões. Aprovar/rejeitar todos, exportar e aplicar afetam
-somente o tipo da seção aberta; as aprovações da outra seção são mantidas.
-Legendas corresponde às sugestões de texto/Text+ existentes no painel anterior.
+Zoom é o **zoom por take** (desde 2026-10-22): etapa opcional, zoom fixo em um take a
+cada N, valores fixos ou em faixa, ponto do zoom no centro por padrão e ajustável em
+X/Y, aplicado junto com o Rough Cut ou depois numa timeline criada pelo O Editor, com
+Desfazer (Ctrl+Z) em vários níveis. Detalhes: docs/TAKE_ZOOM.md. Proteção:
+tests/ui/test_take_zoom_panel.py (1000x680 e 1280x820).
+
+Legendas mantém a lista de sugestões de texto/Text+ da análise. Aprovar/rejeitar
+todos, exportar e aplicar afetam somente as legendas; sugestões heurísticas de zoom
+nunca entram nessa exportação.
 
 Diagnóstico, capacidades, relatório e log ficam nas configurações. A janela é
 reutilizada sem apagar relatórios. A abertura não bloqueia o ACK de mensagens IPC;

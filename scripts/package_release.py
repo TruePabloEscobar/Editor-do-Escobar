@@ -61,6 +61,66 @@ SUFFIXES = {
 EXCLUDED = {"__pycache__", ".pytest_cache", "node_modules", ".venv", "runtime", ".git"}
 
 
+PUBLIC_DOCS = {
+    "ARCHITECTURE.md",
+    "AUTOMATIC_VOICE_EXPORT.md",
+    "DISTRIBUICAO.md",
+    "EDE_SETTINGS.md",
+    "INSTALL_WINDOWS.md",
+    "MICROPHONE_CLEANUP.md",
+    "REGRESSION_TESTS.md",
+    "RESOLVE_INTERNAL_ACTIONS.md",
+    "TAKE_ZOOM.md",
+    "TRANSCRIPT_ROUGH_CUT.md",
+    "TROUBLESHOOTING.md",
+    "UI_WORKFLOW.md",
+}
+PRIVATE_PARTS = {"secrets", "credentials", "sessions", "logs", "reports", "media"}
+SECRET_PATTERNS = (
+    re.compile(rb"gh[pousr]_[A-Za-z0-9]{30,}"),
+    re.compile(rb"github_pat_[A-Za-z0-9_]{30,}"),
+    re.compile(rb"AKIA[A-Z0-9]{16}"),
+    re.compile(rb"AIza[A-Za-z0-9_-]{35}"),
+    re.compile(rb"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
+    re.compile(
+        rb"(?i)(?:password|api_key|access_token)\s*[:=]\s*[\"'](?![\"'])[A-Za-z0-9_+/=-]{16,}[\"']"
+    ),
+)
+
+
+def validate_public_files(files: dict[str, bytes]) -> None:
+    """Refuse recognizable credentials without printing their contents."""
+    for name, data in files.items():
+        if PRIVATE_PARTS.intersection(part.lower() for part in Path(name).parts):
+            raise ValueError(f"Caminho privado recusado: {name}")
+        if any(pattern.search(data) for pattern in SECRET_PATTERNS):
+            raise ValueError(f"Possivel credencial recusada: {name}")
+
+
+def public_files(root: Path) -> dict[str, bytes]:
+    """Software sources and synthetic tests only; never local audits or user settings."""
+    selected = {}
+    for name, data in release_files(root).items():
+        path = Path(name)
+        top = path.parts[0]
+        allowed = (
+            (len(path.parts) == 1 and name not in {"AGENTS.md"})
+            or (top == "src" and path.suffix in {".py", ".svg"})
+            or (top in {"scripts", "launcher"} and path.suffix in {".py", ".ps1", ".lua"})
+            or (top == "tests" and path.suffix in {".py", ".lua", ".cjs"})
+            or name == "tests/golden/interview_suggestions.json"
+            or name in {"config/defaults.json", "config/styles.example.json"}
+            or name == "requirements/runtime-windows.txt"
+            or (top == "docs" and path.name in PUBLIC_DOCS and len(path.parts) == 2)
+            or top == "workflow_integration"
+            or name == ".github/workflows/regression.yml"
+        )
+        if allowed:
+            selected[name] = data
+    validate_public_files(selected)
+    return selected
+
+
 def release_files(root: Path) -> dict[str, bytes]:
     """Explicit roots and extensions prevent accidentally shipping private runtime data."""
     paths = [root / name for name in ROOT_FILES if (root / name).is_file()]
@@ -97,8 +157,8 @@ def release_files(root: Path) -> dict[str, bytes]:
     return result
 
 
-def package_release(root: Path, output: Path) -> Path:
-    files = release_files(root)
+def package_release(root: Path, output: Path, *, public: bool = False) -> Path:
+    files = public_files(root) if public else release_files(root)
     version = re.search(r'^version = "([^"]+)"', files["pyproject.toml"].decode(), re.M)
     if version is None:
         raise ValueError("Versão ausente")
@@ -121,8 +181,9 @@ def package_release(root: Path, output: Path) -> Path:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Preparar plugin EDE para distribuição Windows")
     parser.add_argument("--output", type=Path, default=ROOT / "dist")
+    parser.add_argument("--public", action="store_true", help="Excluir documentos internos")
     args = parser.parse_args()
-    print(package_release(ROOT, args.output))
+    print(package_release(ROOT, args.output, public=args.public))
     return 0
 
 

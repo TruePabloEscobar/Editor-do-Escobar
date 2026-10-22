@@ -1,7 +1,8 @@
-"""Publish a checked source snapshot and a DRAFT GitHub release, without force-push."""
+"""Publish a checked source snapshot and a public GitHub release, without force-push."""
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import shutil
@@ -13,7 +14,7 @@ import zipfile
 from importlib.metadata import version
 from pathlib import Path
 
-from package_release import ROOT, package_release, release_files
+from package_release import ROOT, package_release, public_files
 
 REPOSITORY = "TruePabloEscobar/Editor-do-Escobar"
 
@@ -52,6 +53,17 @@ def validation_asset(package: Path) -> Path:
     return target
 
 
+def stage_snapshot(checkout: Path, names: list[str]) -> None:
+    """Stage only the approved tree; remove obsolete entries from the index only."""
+    tracked = run("git", "ls-files", "-z", cwd=checkout).split("\0")
+    obsolete = [name for name in tracked if name and name not in names]
+    if obsolete:
+        # A clone may have CRLF-normalized files. Their disk contents are irrelevant:
+        # only the exact approved names can enter the public index.
+        run("git", "rm", "--cached", "--", *obsolete, cwd=checkout)
+    run("git", "add", "--", *names, cwd=checkout)
+
+
 def publish(package: Path) -> str:
     """Only publish a completed gate for this exact working snapshot."""
     if not shutil.which("gh") or not shutil.which("git"):
@@ -63,7 +75,14 @@ def publish(package: Path) -> str:
     output.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="source-", dir=output) as folder:
         checkout = Path(folder) / "repository"
-        run("git", "clone", f"https://github.com/{REPOSITORY}.git", str(checkout))
+        run(
+            "git",
+            "-c",
+            "core.autocrlf=false",
+            "clone",
+            f"https://github.com/{REPOSITORY}.git",
+            str(checkout),
+        )
         run("git", "config", "core.autocrlf", "false", cwd=checkout)
         with zipfile.ZipFile(package) as archive:
             manifest = json.loads(archive.read("Editor-do-Escobar/package-manifest.json"))
@@ -82,7 +101,7 @@ def publish(package: Path) -> str:
             "161873772+TruePabloEscobar@users.noreply.github.com",
             cwd=checkout,
         )
-        run("git", "add", "--", *names, cwd=checkout)
+        stage_snapshot(checkout, names)
         if run("git", "diff", "--cached", "--name-only", cwd=checkout).strip():
             run(
                 "git",
@@ -103,7 +122,7 @@ def publish(package: Path) -> str:
             "Requer Python 3.11 x64 e FFmpeg no PATH. Dependências são instaladas pela internet.\n"
             "Modelos são baixados somente pelo botão nas configurações; mídia permanece local.\n"
             "Leia docs/DISTRIBUICAO.md para limites e validação.\n"
-            "Release em rascunho para revisão do desenvolvedor.\n",
+            "Fontes e testes sintéticos; sem dados de produção ou relatórios internos.\n",
             encoding="utf-8",
         )
         existing = subprocess.run(
@@ -113,7 +132,9 @@ def publish(package: Path) -> str:
             check=False,
         )
         if existing.returncode == 0:
-            return str(json.loads(existing.stdout)["url"])
+            raise RuntimeError(
+                "Esta release ja existe; confira os assets no GitHub antes de repetir."
+            )
         return run(
             "gh",
             "release",
@@ -124,7 +145,6 @@ def publish(package: Path) -> str:
             str(validation),
             "--repo",
             REPOSITORY,
-            "--draft",
             "--target",
             commit,
             "--title",
@@ -135,7 +155,13 @@ def publish(package: Path) -> str:
 
 
 def main() -> int:
-    before = release_files(ROOT)
+    parser = argparse.ArgumentParser(description="Publicar EDE testado, sem dados locais")
+    parser.add_argument("--check", action="store_true", help="Conferir arquivos sem publicar")
+    args = parser.parse_args()
+    before = public_files(ROOT)
+    if args.check:
+        print(f"Snapshot publico: {len(before)} arquivos; nenhuma publicacao realizada.")
+        return 0
     environment = {**os.environ, "PYTHONUTF8": "1"}
     gate = subprocess.run(
         [sys.executable, "scripts/run_regression.py"], cwd=ROOT, env=environment, check=False
@@ -143,10 +169,10 @@ def main() -> int:
     if gate.returncode:
         print("Publicacao interrompida: o gate de regressao falhou.")
         return 1
-    if release_files(ROOT) != before:
+    if public_files(ROOT) != before:
         print("Publicacao interrompida: as fontes mudaram durante os testes. Execute novamente.")
         return 1
-    package = package_release(ROOT, ROOT / "dist")
+    package = package_release(ROOT, ROOT / "dist", public=True)
     print(publish(package))
     return 0
 
