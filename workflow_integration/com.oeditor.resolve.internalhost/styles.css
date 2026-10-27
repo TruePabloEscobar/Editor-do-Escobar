@@ -1,8 +1,10 @@
 :root {
   color-scheme: dark;
   font-family: "Segoe UI", sans-serif;
-  background: #191919;
-  color: #f3f3f3;
+  font-size: 13px;
+  line-height: 1.45;
+  background: #272425;
+  color: #FCF5F1;
 }
 
 body {
@@ -10,11 +12,12 @@ body {
 }
 
 main {
-  padding: 28px;
+  padding: 24px;
 }
 
 h1 {
   margin-top: 0;
+  margin-bottom: 10px;
   font-size: 22px;
 }
 
@@ -22,7 +25,7 @@ h1 {
   display: inline-block;
   padding: 8px 14px;
   border-radius: 6px;
-  background: #176b38;
+  background: #1C5427;
   font-weight: 700;
 }
 
@@ -31,8 +34,15 @@ h1 {
 }
 
 .notice {
-  margin-top: 28px;
+  margin-top: 16px;
   padding: 12px;
-  border-left: 3px solid #d8a62b;
-  background: #242424;
+  border-left: 3px solid #AF8E77;
+  background: #4B372C;
 }
+
+p { margin: 10px 0; }
+
+button { background: #1C5427; color: #FCF5F1; border: 1px solid #AF8E77;
+  padding: 10px 16px; border-radius: 5px; font: inherit; cursor: pointer; }
+button:focus-visible { outline: 2px solid #FCF5F1; outline-offset: 3px; }
+button:disabled { opacity: .6; cursor: wait; }

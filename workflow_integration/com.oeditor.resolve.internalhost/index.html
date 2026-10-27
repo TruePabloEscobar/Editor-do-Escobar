@@ -7,19 +7,21 @@
       content="default-src 'self'; script-src 'self'; style-src 'self'"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>O Editor — Host Interno</title>
+    <title>EDE — Editor Do Escobar</title>
     <link rel="stylesheet" href="styles.css" />
     <script src="renderer.js" defer></script>
   </head>
   <body>
     <main>
-      <h1>O Editor — Host Interno</h1>
+      <h1>EDE — Editor Do Escobar</h1>
+      <p>Integração com o DaVinci Resolve Studio</p>
+      <button id="open-editor" type="button">Abrir ou trazer o EDE para frente</button>
+      <p id="editor-detail" role="status" aria-live="polite">Preparando a abertura do editor…</p>
       <p id="status" class="status">STARTING</p>
       <p id="detail">Inicializando host persistente…</p>
       <p id="metadata" class="metadata"></p>
       <p class="notice">
-        Este host processa requests locais. A exportação real permanece bloqueada
-        enquanto as capabilities mutáveis não forem comprovadas em projeto OE_TEST_.
+        Abrir esta integração não aplica alterações à timeline.
       </p>
     </main>
   </body>

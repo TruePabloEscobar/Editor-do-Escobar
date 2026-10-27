@@ -4,11 +4,12 @@ const { app, BrowserWindow, ipcMain } = require("electron");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const { randomUUID } = require("crypto");
 const WorkflowIntegration = require("./WorkflowIntegration.node");
 
 const PLUGIN_ID = "com.oeditor.resolve.internalhost";
 const POLL_INTERVAL_MS = 500;
-const HOST_VERSION = "0.1.0";
+const HOST_VERSION = "0.2.0";
 const TERMINAL_STATES = new Set(["SUCCEEDED", "FAILED", "CANCELLED", "UNSUPPORTED"]);
 const root = path.join(process.env.APPDATA, "O Editor", "resolve-internal-host");
 const directories = {
@@ -16,6 +17,7 @@ const directories = {
   jobs: path.join(root, "jobs"),
   responses: path.join(root, "responses"),
   logs: path.join(root, "logs"),
+  launches: path.join(root, "launches"),
 };
 
 let mainWindow = null;
@@ -23,6 +25,62 @@ let resolveObject = null;
 let pollTimer = null;
 let stopping = false;
 let busy = false;
+let openingEditor = false;
+let editorStatus = { status: "STARTING", detail: "Preparando a abertura do editor…" };
+
+function publishEditorStatus(value) {
+  editorStatus = value;
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("editor:status", value);
+}
+
+// Long brackets preserve Unicode and cannot interpret paths as Lua code.
+function luaLiteral(value) {
+  let separator = "";
+  while (value.includes(`]${separator}]`)) separator += "=";
+  return `[${separator}[${value}]${separator}]`;
+}
+
+async function openEditor() {
+  if (openingEditor) throw new Error("A abertura do EDE já está em andamento.");
+  if (!resolveObject || stopping) throw new Error("A integração com o Resolve não está pronta.");
+  openingEditor = true;
+  publishEditorStatus({ status: "OPENING", detail: "Solicitando a abertura do EDE…" });
+  try {
+    const configPath = path.join(process.env.APPDATA, "O Editor", "launcher.json");
+    const config = JSON.parse(fs.readFileSync(configPath, "utf8").replace(/^\uFEFF/, ""));
+    if (config.schema_version !== 1 || config.internal_host_enabled !== true ||
+        typeof config.project_root !== "string" || !fs.existsSync(config.project_root) ||
+        typeof config.python_executable !== "string" || !fs.existsSync(config.python_executable)) {
+      throw new Error("Instalação do EDE incompleta. Execute novamente o instalador offline.");
+    }
+    ensureDirectories();
+    const launchId = randomUUID();
+    const receipt = path.join(directories.launches, `${launchId}.json`);
+    const entry = path.join(__dirname, "open-editor.lua").replace(/\\/g, "/");
+    const fusion = await resolveObject.Fusion();
+    if (!fusion) throw new Error("O Resolve não disponibilizou o host Fusion para abrir o EDE.");
+    // Read-only bootstrap only. Never consume a pending editorial plan on startup.
+    await fusion.Execute(`local open=dofile(${luaLiteral(entry)}); ` +
+      `open(${luaLiteral(receipt.replace(/\\/g, "/"))},${luaLiteral(launchId)})`);
+    const deadline = Date.now() + 15000;
+    while (Date.now() < deadline && !stopping) {
+      if (fs.existsSync(receipt)) {
+        const result = JSON.parse(fs.readFileSync(receipt, "utf8"));
+        if (result.schema_version !== 1 || result.launch_id !== launchId || result.launched !== true) {
+          throw new Error(result.error || "O host não confirmou a abertura do EDE.");
+        }
+        appendLog(`editor_launch=${launchId} status=DISPATCHED`);
+        return { status: "DISPATCHED", detail: result.status === "SUCCESS"
+          ? "Pedido enviado ao EDE. Continue na janela do editor."
+          : "Pedido enviado ao EDE com diagnóstico. Abra um projeto e uma timeline no Resolve." };
+      }
+      await new Promise((done) => setTimeout(done, 100));
+    }
+    throw new Error("O Resolve não confirmou a abertura em 15 segundos. Consulte o diagnóstico antes de tentar novamente.");
+  } finally {
+    openingEditor = false;
+  }
+}
 
 function now() {
   return new Date().toISOString();
@@ -211,7 +269,7 @@ async function pollRequests() {
 async function startHost() {
   ensureDirectories();
   await initializeResolve();
-  publishStatus("READY", "Host persistente aguardando requests locais.");
+  publishStatus("READY", "Integração conectada ao DaVinci Resolve.");
   pollTimer = setInterval(pollRequests, POLL_INTERVAL_MS);
   await pollRequests();
 }
@@ -236,17 +294,23 @@ async function stopHost() {
 
 function createWindow() {
   mainWindow = new BrowserWindow({
+    title: "EDE — Editor Do Escobar",
     width: 620,
-    height: 340,
+    height: 400,
+    minWidth: 480,
+    minHeight: 360,
     useContentSize: true,
     webPreferences: {
       contextIsolation: true,
       sandbox: true,
+      nodeIntegration: false,
       preload: path.join(__dirname, "preload.js"),
     },
   });
   mainWindow.setMenu(null);
-  mainWindow.loadFile("index.html");
+  mainWindow.loadFile(path.join(__dirname, "index.html"));
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  mainWindow.webContents.on("will-navigate", (event) => event.preventDefault());
   mainWindow.on("close", async () => {
     await stopHost();
   });
@@ -259,6 +323,31 @@ ipcMain.handle("host:getStatus", () => {
     : { status: "STARTING", detail: "Inicializando host." };
 });
 
+function requireEditorWindow(event) {
+  if (!mainWindow || event.sender !== mainWindow.webContents) {
+    throw new Error("Origem da solicitação não permitida.");
+  }
+}
+
+ipcMain.handle("editor:getStatus", (event) => {
+  requireEditorWindow(event);
+  return editorStatus;
+});
+
+ipcMain.handle("editor:open", async (event) => {
+  requireEditorWindow(event);
+  try {
+    const result = await openEditor();
+    publishEditorStatus(result);
+    return result;
+  } catch (error) {
+    appendLog(`editor_launch_failed=${String(error)}`);
+    const result = { status: "FAILED", detail: String(error.message || error) };
+    publishEditorStatus(result);
+    return result;
+  }
+});
+
 app.whenReady().then(async () => {
   createWindow();
   try {
@@ -266,6 +355,14 @@ app.whenReady().then(async () => {
   } catch (error) {
     appendLog(`startup_failed=${String(error)}`);
     publishStatus("FAILED", String(error));
+    publishEditorStatus({ status: "FAILED", detail: String(error.message || error) });
+    return;
+  }
+  try {
+    publishEditorStatus(await openEditor());
+  } catch (error) {
+    appendLog(`editor_launch_failed=${String(error)}`);
+    publishEditorStatus({ status: "FAILED", detail: String(error.message || error) });
   }
 });
 

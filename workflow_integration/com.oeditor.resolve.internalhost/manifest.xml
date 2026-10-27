@@ -2,9 +2,9 @@
 <BlackmagicDesign>
     <Plugin>
         <Id>com.oeditor.resolve.internalhost</Id>
-        <Name>O Editor — Host Interno</Name>
-        <Version>0.1.0</Version>
-        <Description>Host persistente local e seguro para O Editor.</Description>
+        <Name>EDE — Editor Do Escobar</Name>
+        <Version>0.2.0</Version>
+        <Description>Transcrição, prévia de áudio e edição assistida local com o EDE.</Description>
         <FilePath>main.js</FilePath>
     </Plugin>
 </BlackmagicDesign>

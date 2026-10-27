@@ -1,6 +1,6 @@
 {
   "name": "o-editor-resolve-internal-host",
-  "version": "0.1.0",
-  "description": "Host persistente local para O Editor",
+  "version": "0.2.0",
+  "description": "Integração local do Editor Do Escobar com o DaVinci Resolve Studio",
   "main": "main.js"
 }

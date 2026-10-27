@@ -1,7 +1,7 @@
 {
   "format": 1,
   "version": "0.2.0",
-  "build": "0ae55c69f845",
+  "build": "4a2adb00da7a",
   "files": {
     "config/defaults.json": "cafc1b814742ef7444154d526a7b73e72c8347e7b88458744122918260d6ff8b",
     "Instalar EDE.bat": "164d5ecf1966ab1d4b678465aa709ce3d9b852914c07f1df0a610d9bf1eb7ed7",
@@ -16,11 +16,12 @@
     "LICENSE": "89f7c349baa70207b984b872238e56c819fa12cca5d08fedd7bc69149babc289",
     "O Editor.cmd": "e8730d56fe16d1f63b0f3e2f206b3648ce4838bcae9e6c928d3d968a3301c9b1",
     "pyproject.toml": "16e9384ab2755868b7bb29900dfa7b71e6be2372dae76aef40c6810451f86ce8",
-    "README.md": "e13d82932426063f526222083fd9ba441787f8c7aebd1f516437f1f3d05c858a",
+    "README.md": "713b97a842fcff59604ff92416f2d1bb5fff516877bddb34dfd6c3918b2e3c50",
     "requirements/runtime-windows.txt": "d1486d72bfed4e5ba3726db1fe3be3a5dbf6c7027c087c9faad0acb8f3bd023a",
     "scripts/check_installation.py": "131b02ba869f645e9e86b0a734541ab7d5437faaa863e1ec695a0681eecdfa76",
     "scripts/install_launcher.ps1": "6a32380e27e4a3e37818b3e811058e9b4c9fc7fac1531d620abc143356e1c932",
-    "scripts/install_release.ps1": "b228295056f9885f1f6478f27f114f3299c5d382b1bb4c466ec30a0391fc873d",
+    "scripts/install_release.ps1": "dade4f7ed4b7b7632ddcb1a26ab265ea59cfcb92f0e44bc01465dd00066968da",
+    "scripts/install_workflow_integration.ps1": "e3f4bab497b471eec4039ba5cdc3c12fbfa0c0e65cc6b496dd61bf3a1bc85c58",
     "scripts/verify_launcher_installation.ps1": "15df5506dbccc2f6089328081de42f766cba1cd1dcb0cd4e5d672d79360a15e6",
     "src/o_editor/__init__.py": "0e536ed56656245b1b0fa4ca8bbb25e91787b912e8e2612f1891f4885d0983e4",
     "src/o_editor/__main__.py": "48d411b624d24470879d57809241adbae41320f1fb07ac8fd5cdb07a9b17ff37",
@@ -133,21 +134,13 @@
     "src/o_editor/ui/theme.py": "d1c46653dee862b5368988f35f91e35a57722910528e884a0fcd3cb00122a0f0",
     "src/o_editor/ui/transcript_panel.py": "7f0b3ccd87b0595ed0132425468f2b9b9e7857d9fe88fed203c9a8714c29b943",
     "src/o_editor/ui/voice_track_selector.py": "f55f07915f1655f7952e61dbccd324dd3cda7c420dc5300e7eb51558a4c4e80d",
-    "workflow_integration/com.oeditor.resolve.internalhost/index.html": "b53e50f3d6d271b66836af1769c38060376ab526092cc0b529602fa4e80d2711",
-    "workflow_integration/com.oeditor.resolve.internalhost/main.js": "d9f243e67d263a0af87be74415faa82559a7737a779a5b6331a48000c1287f5e",
-    "workflow_integration/com.oeditor.resolve.internalhost/manifest.xml": "0ddb8ef7ca014bfeb6ad25417c431571cc4ae3818421dab5bd20e47b076a6c70",
-    "workflow_integration/com.oeditor.resolve.internalhost/package.json": "843fb835206c3b4c1a4195325ee5440e4c248d096cadc82a74e1c23647bce521",
-    "workflow_integration/com.oeditor.resolve.internalhost/preload.js": "7f98e4944a5f8d9d987f3b81c1d87eeae7b9472f64011529f2f81e93646e5b4e",
-    "workflow_integration/com.oeditor.resolve.internalhost/renderer.js": "5f755061e5b421389f3489c0b296a4c8460aa8a01b185ab3fa53b4a7a795224e",
-    "workflow_integration/com.oeditor.resolve.internalhost/styles.css": "293caed1e1e48984d2f18f0e17b087a61105c45ec06953d2f9c5da8d8c00bf9e"
-  },
-  "installer": {
-    "kind": "self-contained",
-    "asset": "EDE-Instalador-Windows-x64.exe",
-    "url": "https://github.com/TruePabloEscobar/Editor-do-Escobar/releases/latest/download/EDE-Instalador-Windows-x64.exe",
-    "release": "https://github.com/TruePabloEscobar/Editor-do-Escobar/releases/tag/v0.2.0-0ae55c69f845",
-    "sha256": "751cc0623ed5068ff51438e87bb5b73cd2cf412f56bf04d16c0606366c475106",
-    "bytes": 396419072,
-    "models_included": false
+    "workflow_integration/com.oeditor.resolve.internalhost/index.html": "af4f46597c764d0c642e461178560a258a7e443167bb3fbb3a86555835362e77",
+    "workflow_integration/com.oeditor.resolve.internalhost/main.js": "8c043042f588177fd71faaf0d16153a41a8ed443be797f22ef748a29e4b22442",
+    "workflow_integration/com.oeditor.resolve.internalhost/manifest.xml": "bc1868ac6b179ffbbb01aa9e070bc76da68adb4d3505c779052ac3ba08788e65",
+    "workflow_integration/com.oeditor.resolve.internalhost/open-editor.lua": "e0515c96aa766be3404b8d7ee6dd1e26a78665f1c21cd135e11ce8a435d108f9",
+    "workflow_integration/com.oeditor.resolve.internalhost/package.json": "0d225579d712b866b1042cefd593fcae2659a6149d78f37e26cd998a96a51b85",
+    "workflow_integration/com.oeditor.resolve.internalhost/preload.js": "ce72fe27081957f70f091a39e595c9cb3e42f062f933a603031be846f06f9c3b",
+    "workflow_integration/com.oeditor.resolve.internalhost/renderer.js": "34e2298053d84f90b36171c7b856b2cb55c680c7782dead624b22a4028b53bc4",
+    "workflow_integration/com.oeditor.resolve.internalhost/styles.css": "7eb1fdce31a24899bb57221c1f3ea78ee61871016625e5e91ae9cd3ae3b03906"
   }
 }

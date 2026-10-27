@@ -4,6 +4,9 @@ param(
     [string]$PythonPath,
     [string]$InstallRoot = (Join-Path $env:LOCALAPPDATA "Editor Do Escobar\releases"),
     [string]$LauncherDestination,
+    [string]$WorkflowDestination,
+    [string]$WorkflowDeveloperRoot,
+    [switch]$SkipWorkflowIntegration,
     [switch]$ValidateOnly,
     [switch]$OfflineDependencies
 )
@@ -31,6 +34,15 @@ foreach ($entry in $files) {
     }
 }
 if ($ValidateOnly) { Write-Host "Pacote integro: $($files.Count) arquivos."; return }
+if (-not $SkipWorkflowIntegration) {
+    if (-not $WorkflowDeveloperRoot) {
+        $WorkflowDeveloperRoot = Join-Path $env:PROGRAMDATA 'Blackmagic Design/DaVinci Resolve/Support/Developer/Workflow Integrations'
+    }
+    $workflowModule = Join-Path $WorkflowDeveloperRoot 'Examples/SamplePlugin/WorkflowIntegration.node'
+    if (-not [IO.File]::Exists($workflowModule)) {
+        throw 'SDK Workflow Integration ausente. Instale primeiro o DaVinci Resolve Studio com a documentacao de desenvolvimento e execute novamente este instalador. A instalacao anterior do EDE foi preservada.'
+    }
+}
 $portable = Test-Path -LiteralPath (Join-Path $SourceRoot 'runtime-profile.json')
 function Test-CompatiblePython([string]$Candidate) {
     if (-not $Candidate -or -not [IO.File]::Exists($Candidate)) { return $false }
@@ -125,7 +137,14 @@ if ($LauncherDestination) {
 }
 & (Join-Path $destination 'scripts\install_launcher.ps1') @launcherArgs
 & (Join-Path $destination 'scripts\verify_launcher_installation.ps1') @verifyArgs
+if (-not $SkipWorkflowIntegration) {
+    $workflowArgs = @{ProjectRoot=$destination; Elevate=$true}
+    if ($WorkflowDestination) { $workflowArgs.Destination=$WorkflowDestination }
+    if ($WorkflowDeveloperRoot) { $workflowArgs.DeveloperRoot=$WorkflowDeveloperRoot }
+    & (Join-Path $destination 'scripts\install_workflow_integration.ps1') @workflowArgs
+    Write-Host 'Plugin EDE instalado e conferido. Reabra o Resolve: Workspace > Workflow Integrations > EDE - Editor Do Escobar.'
+}
 Write-Host "EDE instalado em: $destination"
-Write-Host "Reabra o Resolve. Area de Trabalho > Scripts > O EDITOR."
+Write-Host "Acesso alternativo preservado: Area de Trabalho > Scripts > O EDITOR."
 Write-Host "Engrenagem > Baixar modelo para configurar a transcricao."
 Write-Host "Configuracoes, sessoes, modelos e versoes anteriores foram preservados."
