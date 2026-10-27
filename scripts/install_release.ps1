@@ -8,6 +8,9 @@ param(
     [switch]$OfflineDependencies
 )
 $ErrorActionPreference = "Stop"
+$env:PSModulePath = (Join-Path $env:WINDIR "System32\WindowsPowerShell\v1.0\Modules") + ";" + (Join-Path $env:ProgramFiles "WindowsPowerShell\Modules")
+[Console]::OutputEncoding = New-Object Text.UTF8Encoding($false)
+$OutputEncoding = [Console]::OutputEncoding
 $env:PYTHONUTF8 = "1"
 if (-not $SourceRoot) { $SourceRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path) }
 $SourceRoot = [IO.Path]::GetFullPath($SourceRoot)
@@ -28,19 +31,48 @@ foreach ($entry in $files) {
     }
 }
 if ($ValidateOnly) { Write-Host "Pacote integro: $($files.Count) arquivos."; return }
-if (-not $PythonPath) {
-    if (Get-Command py -ErrorAction SilentlyContinue) {
-        $PythonPath = & py -3.11 -c 'import sys; print(sys.executable)'
-    } elseif (Get-Command python -ErrorAction SilentlyContinue) {
-        $PythonPath = (Get-Command python).Source
-    }
+$portable = Test-Path -LiteralPath (Join-Path $SourceRoot 'runtime-profile.json')
+function Test-CompatiblePython([string]$Candidate) {
+    if (-not $Candidate -or -not [IO.File]::Exists($Candidate)) { return $false }
+    try {
+        $value = & $Candidate -I -c 'import struct,sys; print(str(sys.version_info.major)+chr(46)+str(sys.version_info.minor)+chr(124)+str(struct.calcsize(chr(80))*8))' 2>$null
+        return ($LASTEXITCODE -eq 0 -and ([string]$value).Trim() -eq '3.11|64')
+    } catch { return $false }
 }
-if (-not $PythonPath) { throw "Instale Python 3.11 x64: https://www.python.org/downloads/" }
-$version = & $PythonPath -c 'import struct,sys; print(str(sys.version_info.major)+chr(46)+str(sys.version_info.minor)+chr(124)+str(struct.calcsize(chr(80))*8))'
-if ($LASTEXITCODE -ne 0 -or $version.Trim() -ne '3.11|64') { throw "Python 3.11 x64 obrigatorio." }
-if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue) -or
-    -not (Get-Command ffprobe -ErrorAction SilentlyContinue)) {
-    throw "Instale FFmpeg e ffprobe no PATH. Exemplo: winget install Gyan.FFmpeg"
+if ($portable) {
+    if (-not ($files | Where-Object { $_.Name -eq 'runtime-profile.json' })) {
+        throw 'Perfil de runtime fora do manifesto; extraia novamente o instalador completo.'
+    }
+    $profile = Get-Content -Raw -LiteralPath (Join-Path $SourceRoot 'runtime-profile.json') -Encoding UTF8 | ConvertFrom-Json
+    if ($profile.kind -ne 'self-contained' -or $profile.format -ne 1) { throw 'Perfil de runtime invalido.' }
+    $PythonPath = Join-Path $SourceRoot 'python\python.exe'
+    if (-not (Test-CompatiblePython $PythonPath)) { throw 'Python integrado danificado ou Windows incompativel. Extraia novamente o pacote completo.' }
+    foreach ($tool in @('ffmpeg.exe', 'ffprobe.exe')) {
+        $bundledTool = Join-Path (Join-Path $SourceRoot 'tools/ffmpeg/bin') $tool
+        if (-not [IO.File]::Exists($bundledTool)) { throw "Ferramenta integrada ausente: $tool" }
+    }
+} else {
+    $candidates = @()
+    if ($PythonPath) { $candidates += $PythonPath }
+    else {
+        if (Get-Command py -ErrorAction SilentlyContinue) {
+            try {
+                $fromLauncher = & py -3.11 -c 'import sys; print(sys.executable)' 2>$null
+                if ($LASTEXITCODE -eq 0) { $candidates += [string]$fromLauncher }
+            } catch { Write-Host 'Python Launcher sem 3.11; procurando outras instalacoes.' }
+        }
+        $candidates += @(Get-Command python.exe -CommandType Application -All -ErrorAction SilentlyContinue | ForEach-Object { $_.Source })
+        $candidates += @((Join-Path $env:LOCALAPPDATA 'Programs\Python\Python311\python.exe'),
+            (Join-Path $env:ProgramFiles 'Python311\python.exe'))
+    }
+    $PythonPath = $candidates | Where-Object { Test-CompatiblePython ([string]$_) } | Select-Object -First 1
+    if (-not $PythonPath) {
+        throw 'Este e o pacote de fontes. Use EDE-Instalador-Windows-x64.exe, com Python e FFmpeg incluidos, ou informe -PythonPath para Python 3.11 x64.'
+    }
+    if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue) -or
+        -not (Get-Command ffprobe -ErrorAction SilentlyContinue)) {
+        throw 'FFmpeg/ffprobe ausentes. Use o instalador autossuficiente ou instale as ferramentas para o pacote de fontes.'
+    }
 }
 $destination = Join-Path ([IO.Path]::GetFullPath($InstallRoot)) ($manifest.version + '-' + $manifest.build)
 if ($SourceRoot -eq $destination) { throw "Extraia o pacote fora do destino de instalacao." }
@@ -55,23 +87,36 @@ foreach ($entry in $files) {
     Copy-Item -LiteralPath (Join-Path $SourceRoot $entry.Name) -Destination $target -Force
 }
 Copy-Item -LiteralPath $manifestPath -Destination (Join-Path $destination 'package-manifest.json') -Force
-$python = Join-Path $destination '.venv\Scripts\python.exe'
-if (-not (Test-Path -LiteralPath $python)) {
-    & $PythonPath -m venv (Join-Path $destination '.venv')
-    if ($LASTEXITCODE -ne 0) { throw "Falha ao criar o ambiente Python." }
+if ($portable) {
+    $python = Join-Path $destination 'python\python.exe'
+    $env:PATH = (Join-Path $destination 'tools/ffmpeg/bin') + ';' + $env:PATH
+    & $python (Join-Path $destination 'scripts\check_installation.py')
+    if ($LASTEXITCODE -ne 0) { throw 'Falha na verificacao do ambiente integrado. O menu anterior foi preservado.' }
+} else {
+    $python = Join-Path $destination '.venv\Scripts\python.exe'
+    if (-not (Test-Path -LiteralPath $python)) {
+        & $PythonPath -m venv (Join-Path $destination '.venv')
+        if ($LASTEXITCODE -ne 0) { throw "Falha ao criar o ambiente Python." }
+    }
+    # Editable install preserves the composition root, config, assets and Lua helpers together.
+    if (-not $OfflineDependencies) {
+        & $python -m pip install --upgrade 'pip>=26.2' 'setuptools>=83'
+        if ($LASTEXITCODE -ne 0) { throw "Falha ao atualizar ferramentas de instalacao; menu preservado." }
+    }
+    $pipArgs = @('-m', 'pip', 'install', '-e', "${destination}[whisper]", '-c',
+        (Join-Path $destination 'requirements\runtime-windows.txt'))
+    if ($OfflineDependencies) { $pipArgs += @('--no-index', '--no-build-isolation') }
+    & $python @pipArgs
+    if ($LASTEXITCODE -ne 0) { throw "Instalacao de dependencias falhou. O menu anterior foi preservado." }
+    & $python -m pip check
+    if ($LASTEXITCODE -ne 0) { throw "Dependencias inconsistentes; instalacao interrompida." }
+ }
+# Verify the actual installed copy, including binaries, before changing the menu.
+foreach ($entry in $files) {
+    if ((Get-FileHash -LiteralPath (Join-Path $destination $entry.Name) -Algorithm SHA256).Hash.ToLowerInvariant() -ne $entry.Value) {
+        throw "Copia instalada divergente: $($entry.Name). Menu anterior preservado."
+    }
 }
-# Editable install preserves the composition root, config, assets and Lua helpers together.
-if (-not $OfflineDependencies) {
-    & $python -m pip install --upgrade 'pip>=26.2' 'setuptools>=83'
-    if ($LASTEXITCODE -ne 0) { throw "Falha ao atualizar ferramentas de instalacao; menu preservado." }
-}
-$pipArgs = @('-m', 'pip', 'install', '-e', "${destination}[whisper]", '-c',
-    (Join-Path $destination 'requirements\runtime-windows.txt'))
-if ($OfflineDependencies) { $pipArgs += @('--no-index', '--no-build-isolation') }
-& $python @pipArgs
-if ($LASTEXITCODE -ne 0) { throw "Instalacao de dependencias falhou. O menu anterior foi preservado." }
-& $python -m pip check
-if ($LASTEXITCODE -ne 0) { throw "Dependencias inconsistentes; instalacao interrompida." }
 $launcherArgs = @{ProjectRoot=$destination; PythonExecutable=$python}
 $verifyArgs = @{ProjectRoot=$destination; SkipProcessStart=$true}
 if ($LauncherDestination) {

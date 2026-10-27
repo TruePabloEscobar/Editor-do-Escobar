@@ -8,24 +8,36 @@ preservada; o Rough Cut exige uma cópia criada e verificada.
 
 ## Baixar e instalar
 
-1. [Baixe o ZIP da versão atual](https://github.com/TruePabloEscobar/Editor-do-Escobar/releases/latest).
-2. Instale **Python 3.11 x64** e **FFmpeg/ffprobe**, disponíveis no PATH.
-3. Confira o SHA-256 do ZIP com o arquivo `.sha256` da mesma versão.
-4. Extraia o ZIP completo e execute **Instalar EDE.bat**. Não exige administrador.
-5. Reabra o Resolve e acesse **Área de Trabalho → Scripts → O EDITOR**.
+1. [Baixe o instalador offline do EDE](https://github.com/TruePabloEscobar/Editor-do-Escobar/releases/latest/download/EDE-Instalador-Windows-x64.exe) ([página da versão](https://github.com/TruePabloEscobar/Editor-do-Escobar/releases/tag/v0.2.0-0ae55c69f845)).
+2. Confira o SHA-256 com o arquivo `.exe.sha256` correspondente.
+3. Execute o EXE. Python 3.11 x64, bibliotecas do aplicativo e FFmpeg/ffprobe já estão
+   incluídos; não é necessário instalar Python, usar winget ou configurar o PATH.
+4. Aguarde a conferência dos arquivos e do ambiente. Só depois o menu é atualizado.
+5. Reabra o Resolve: **Área de Trabalho → Scripts → O EDITOR**.
 6. Na engrenagem, escolha **Baixar modelo…** ou uma pasta CTranslate2 existente.
    O botão **Sobre** contém o tutorial do aplicativo.
 
-A instalação baixa as dependências Python pela internet e mantém cada versão em
-`%LOCALAPPDATA%\Editor Do Escobar\releases`. O ZIP não contém Python, FFmpeg,
-drivers nem modelos de IA. Modelos são baixados somente por ação explícita na interface.
-CPU é o fallback; GPU NVIDIA exige bibliotecas CUDA/cuDNN compatíveis com CTranslate2.
+A instalação é por usuário, em `%LOCALAPPDATA%\Editor Do Escobar\releases`,
+sem alterar Python ou PATH permanentes. O EXE registra diagnóstico em
+`%LOCALAPPDATA%\Editor Do Escobar\installer-logs`.
+
+O ZIP de código-fonte gerado automaticamente pelo GitHub não é o instalador offline.
+Para instalar sem preparar dependências, use o EXE do link acima.
+
+A instalação offline não baixa dependências nem modelos de IA. O primeiro download
+de modelo requer internet e clique explícito no aplicativo. Drivers CUDA/cuDNN não
+são instalados; o funcionamento em GPU depende das bibliotecas compatíveis. A CPU
+continua disponível. O pacote de fontes, sem `runtime-profile.json`, permanece uma
+opção para desenvolvedores e exige Python/FFmpeg e instalação de dependências.
+
+A instalação desta versão foi testada em perfil descartável no Windows x64;
+a validação física em outro PC e a revisão editorial no Resolve são separadas.
 
 ## Atualização e dados
 
-Para atualizar, instale o ZIP mais recente com o EDE fechado. Configurações e sessões
+Para atualizar, execute o instalador EXE mais recente com o EDE fechado. Configurações e sessões
 em `%APPDATA%\O Editor` são preservadas. Versões anteriores não são removidas.
-Para voltar a uma delas, execute o instalador do ZIP anterior.
+Para voltar a uma delas, execute o EXE da versão anterior.
 
 O programa funciona como script com aplicativo externo, e não como plugin OFX.
 As verificações de integridade fazem parte do instalador. Este repositório contém

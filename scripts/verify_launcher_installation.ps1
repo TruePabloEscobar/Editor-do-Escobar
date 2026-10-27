@@ -6,6 +6,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$env:PSModulePath = (Join-Path $env:WINDIR "System32\WindowsPowerShell\v1.0\Modules") + ";" + (Join-Path $env:ProgramFiles "WindowsPowerShell\Modules")
 [Console]::OutputEncoding = New-Object Text.UTF8Encoding($false)
 $OutputEncoding = [Console]::OutputEncoding
 $env:PYTHONUTF8 = "1"
@@ -148,8 +149,10 @@ if (-not [System.IO.File]::Exists($configuration.python_executable)) {
 }
 if (-not [System.IO.Directory]::Exists(
     [System.IO.Path]::Combine($configuration.project_root, ".venv")
+) -and -not [System.IO.File]::Exists(
+    [System.IO.Path]::Combine($configuration.project_root, "python", "python311._pth")
 )) {
-    throw "A virtual environment configurada não existe."
+    throw "O ambiente Python configurado não existe."
 }
 
 $version = & $configuration.python_executable -c `

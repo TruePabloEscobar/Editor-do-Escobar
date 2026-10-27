@@ -178,10 +178,10 @@ class InternalActionMainWindow(MainWindow):
         if request.action == "apply_rough_cut":
             self._remember_rough_cut(request)
             if self._transcript_panel.display_rough_cut_result(request):
-                self._navigate(3)
+                self._navigate(2)
         elif request.action == "apply_take_zoom":
             if self._take_zoom_panel.display_result(request):
-                self._navigate(4)
+                self._navigate(3)
         elif request.action != "open":
             self._show_diagnostics()
         self._open_action_report_button.setVisible(

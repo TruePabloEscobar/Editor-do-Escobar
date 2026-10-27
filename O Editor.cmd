@@ -2,6 +2,8 @@
 setlocal
 set "ROOT=%~dp0"
 set "PYTHON=%ROOT%.venv\Scripts\python.exe"
+if exist "%ROOT%python\python.exe" set "PYTHON=%ROOT%python\python.exe"
+if exist "%ROOT%tools\ffmpeg\bin\ffmpeg.exe" set "PATH=%ROOT%tools\ffmpeg\bin;%PATH%"
 set "PYTHONUTF8=1"
 set "PYTHONPATH=%ROOT%src;%PYTHONPATH%"
 set "LOGDIR=%ROOT%runtime\logs"

@@ -231,21 +231,21 @@ class MainWindow(QMainWindow):
         self._workflow_buttons: list[QPushButton] = []
         for index, title in enumerate(
             (
-                "01  Faixas de voz",
-                "02  Transcrição",
-                "03  Revisão",
-                "04  Prévia e cortes",
+                "01  Transcrição",
+                "02  Revisão",
+                "03  Prévia e cortes",
                 "Zoom",
                 "Legendas",
             )
         ):
             button = QPushButton(title)
-            if index >= 4:
+            button.setFixedHeight(40)
+            if index >= 3:
                 button.setMinimumWidth(84)
             button.setProperty("role", "nav")
             button.setCheckable(True)
             button.clicked.connect(lambda _checked=False, step=index: self._navigate(step))
-            navigation.addWidget(button, 1 if index < 4 else 0)
+            navigation.addWidget(button, 1 if index < 3 else 0)
             self._workflow_buttons.append(button)
         self._settings_button = QPushButton()
         self._settings_button.setObjectName("settingsButton")
@@ -261,25 +261,18 @@ class MainWindow(QMainWindow):
 
         source_page = QWidget()
         source_layout = QVBoxLayout(source_page)
-        source_layout.setContentsMargins(18, 12, 18, 12)
-        source_layout.addWidget(ui_label("Faixas de voz", "heading"))
-        source_layout.addWidget(ui_label("Selecione as faixas para transcrever."))
+        source_layout.setContentsMargins(0, 0, 0, 0)
         self._voice_selector = VoiceTrackSelector()
         source_layout.addWidget(self._voice_selector, 1)
         self._source_notice = ui_label(
-            "Ao trocar os clipes no Resolve, clique em Atualizar timeline.", "notice"
+            "Ao trocar os clipes no Resolve, clique em Atualizar timeline.", "muted"
         )
         source_layout.addWidget(self._source_notice)
         source_actions = QHBoxLayout()
         self._manual_audio_button = QPushButton("Selecionar WAV para análise")
         source_actions.addWidget(self._manual_audio_button)
         source_actions.addStretch()
-        self._source_next_button = QPushButton("Continuar para transcrição  →")
-        self._source_next_button.setProperty("role", "primary")
-        self._source_next_button.clicked.connect(lambda: self._navigate(1))
-        source_actions.addWidget(self._source_next_button)
         source_layout.addLayout(source_actions)
-        self._workspace.addWidget(source_page)
 
         self._transcript_panel = TranscriptPanel(
             config=self._config,
@@ -289,8 +282,10 @@ class MainWindow(QMainWindow):
             selected_tracks_provider=lambda: self._voice_selector.selected_tracks(),
             take_zoom_provider=self._take_zoom_for_rough_cut,
         )
+        self._transcript_panel.add_source_widget(source_page)
         self._transcript_panel.stage_requested.connect(self._navigate)
         self._transcript_panel.activity_changed.connect(self._update_refresh_availability)
+        self._transcript_panel.activity_changed.connect(self._update_source_availability)
         self._take_zoom_panel = TakeZoomPanel(
             config=self._config,
             root=self._root,
@@ -506,16 +501,17 @@ class MainWindow(QMainWindow):
             return
         for index, button in enumerate(self._workflow_buttons):
             button.setChecked(index == step)
-        if step == 0:
-            self._workspace.setCurrentIndex(0)
-        else:
-            self._workspace.setCurrentIndex(1)
-            # Zoom (4) is the zoom-per-take step; captions (5) keep the suggestion list.
-            self._tabs.setCurrentIndex({4: 2, 5: 1}.get(step, 0))
-            if step < 4:
-                self._transcript_panel.set_stage(step - 1)
-            elif step == 5:
-                self._set_suggestion_mode("text")
+        self._workspace.setCurrentIndex(0)
+        self._tabs.setCurrentIndex({3: 2, 4: 1}.get(step, 0))
+        if step < 3:
+            self._transcript_panel.set_stage(step)
+        elif step == 4:
+            self._set_suggestion_mode("text")
+
+    def _update_source_availability(self) -> None:
+        blocked = self._transcript_panel.operation_active or self._transcript_panel._confirming
+        self._voice_selector.setEnabled(not blocked)
+        self._manual_audio_button.setEnabled(not blocked)
 
     def _take_zoom_for_rough_cut(self) -> TakeZoomSettings | None:
         panel = getattr(self, "_take_zoom_panel", None)
@@ -723,6 +719,7 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Aguarde a operação em andamento terminar para fechar.")
             event.ignore()
             return
+        self._transcript_panel._invalidate_preview()
         if self._settings_dialog is not None:
             self._settings_dialog.reject()
         super().closeEvent(event)
@@ -815,9 +812,6 @@ class MainWindow(QMainWindow):
         has_source = bool(self._voice_selector.selected_tracks() or self._manual_audio)
         has_context = self._use_mock or self._internal_host or self._external_bridge_enabled
         self._analyze_button.setEnabled(not self._busy and has_context and has_source)
-        self._source_next_button.setEnabled(
-            has_context and (self._use_mock or bool(self._voice_selector.selected_tracks()))
-        )
         if not has_source:
             self._analyze_button.setToolTip(
                 "Selecione pelo menos uma faixa de voz ou forneça um WAV manual."

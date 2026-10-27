@@ -6,7 +6,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QSettings, Qt, QThread, QTimer, Signal
+from PySide6.QtCore import QSettings, Qt, QThread, QThreadPool, QTimer, Signal
 from PySide6.QtWidgets import (
     QAbstractButton,
     QButtonGroup,
@@ -20,6 +20,8 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QScrollArea,
+    QSizePolicy,
     QStackedWidget,
     QTableView,
     QTableWidget,
@@ -71,6 +73,8 @@ from o_editor.infrastructure.transcription.track import (
 )
 from o_editor.internal_actions.presentation import render_internal_action
 from o_editor.internal_actions.request import InternalActionRequest
+from o_editor.ui.audio_preview import AudioPreviewWidget
+from o_editor.ui.controllers.preview_workers import PreviewJob
 from o_editor.ui.controllers.workers import RoughCutDispatchWorker, TranscriptionWorker
 from o_editor.ui.duration_control import DurationControl
 from o_editor.ui.models.transcript_model import (
@@ -78,6 +82,7 @@ from o_editor.ui.models.transcript_model import (
     TranscriptFilterModel,
     TranscriptTableModel,
 )
+from o_editor.ui.rough_cut_confirmation import RoughCutConfirmation
 from o_editor.ui.theme import label
 
 PRESET_LABELS = (
@@ -117,6 +122,14 @@ class TranscriptPanel(QWidget):
         self._take_zoom_provider = take_zoom_provider
         self._external_busy: Callable[[], bool] = lambda: False
         self._store = SessionStore(root / "runtime" / "mock-sessions" if use_mock else None)
+        self._preview_revision = 0
+        self._preview_updating = False
+        self._confirming = False
+        self._preview_timer = QTimer(self)
+        self._preview_timer.setSingleShot(True)
+        self._preview_timer.setInterval(220)
+        self._preview_timer.timeout.connect(self._refresh_preview_async)
+        self._preview_job: PreviewJob | None = None
         self._session: TranscriptSession | None = None
         self._layout: TimelineLayout | None = None
         self._layout_error: str | None = None
@@ -151,23 +164,25 @@ class TranscriptPanel(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(18, 12, 18, 12)
         layout.setSpacing(8)
-        self.stage_caption = label("02 / TRANSCRIBIR", "eyebrow")
+        self.stage_caption = label("01 / TRANSCRIÇÃO", "eyebrow")
         self.stage_title = label("Da fala para o texto", "heading")
         self.stage_caption.hide()
         self.stage_title.hide()
         self.status_label = label("Abra O Editor pelo menu do Resolve para carregar a timeline.")
         layout.addWidget(self.status_label)
         self.pages = QStackedWidget()
+        self.pages.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Ignored)
         layout.addWidget(self.pages, 1)
 
         transcription = QWidget()
         preparation = QVBoxLayout(transcription)
+        self._transcription_preparation = preparation
         preparation.setContentsMargins(0, 0, 0, 0)
         intro = QGroupBox("Transcrição por participante")
         intro_layout = QVBoxLayout(intro)
-        self.session_summary = label("Nenhuma transcrição nesta timeline.", "notice")
+        self.session_summary = label("Nenhuma transcrição nesta timeline.", "muted")
         intro_layout.addWidget(self.session_summary)
-        intro_layout.addSpacing(14)
+        intro_layout.addSpacing(4)
         top = QHBoxLayout()
         self.transcribe_button = QPushButton("Transcrever faixas selecionadas")
         self.transcribe_button.setProperty("role", "primary")
@@ -177,10 +192,9 @@ class TranscriptPanel(QWidget):
         top.addStretch()
         intro_layout.addLayout(top)
         preparation.addWidget(intro)
-        preparation.addStretch()
         self.review_button = QPushButton("Continuar para revisão  →")
         self.review_button.setProperty("role", "primary")
-        self.review_button.clicked.connect(lambda: self.stage_requested.emit(2))
+        self.review_button.clicked.connect(lambda: self.stage_requested.emit(1))
         preparation.addWidget(self.review_button, 0, Qt.AlignmentFlag.AlignRight)
         self.pages.addWidget(transcription)
 
@@ -194,7 +208,7 @@ class TranscriptPanel(QWidget):
         toolbar.addWidget(self.import_button)
         toolbar.addStretch()
         self.preview_step_button = QPushButton("Continuar para prévia  →")
-        self.preview_step_button.clicked.connect(lambda: self.stage_requested.emit(3))
+        self.preview_step_button.clicked.connect(lambda: self.stage_requested.emit(2))
         toolbar.addWidget(self.preview_step_button)
         review_layout.addLayout(toolbar)
         missing = QHBoxLayout()
@@ -239,9 +253,10 @@ class TranscriptPanel(QWidget):
         preview = QWidget()
         preview_layout = QVBoxLayout(preview)
         preview_layout.setContentsMargins(0, 0, 0, 0)
+        preview_layout.setSpacing(4)
         self.preview_controls = QTabWidget()
         self.preview_controls.setObjectName("previewControls")
-        self.preview_controls.setFixedHeight(214)
+        self.preview_controls.setFixedHeight(228)
         self._preview_settings = self.preview_controls
         silence_page = QWidget()
         silence_layout = QVBoxLayout(silence_page)
@@ -340,7 +355,18 @@ class TranscriptPanel(QWidget):
         self.preview_text.setPlaceholderText(
             "Gere a prévia para revisar os cortes antes de aplicar."
         )
-        preview_layout.addWidget(self.preview_text, 1)
+        cache = self._root / "runtime/cache" if self._use_mock else default_app_cache_root()
+        self.audio_preview = AudioPreviewWidget(self._config, cache)
+        preview_layout.addWidget(self.audio_preview, 1)
+        self.report_toggle = QPushButton("▸ Relatório e diagnósticos")
+        self.report_toggle.setFixedHeight(28)
+        self.report_toggle.setStyleSheet("QPushButton { padding: 3px 8px; }")
+        self.report_toggle.setCheckable(True)
+        self.report_toggle.toggled.connect(self._toggle_report)
+        preview_layout.addWidget(self.report_toggle)
+        self.preview_text.setMaximumHeight(140)
+        self.preview_text.hide()
+        preview_layout.addWidget(self.preview_text)
         self.resolve_notice = QWidget()
         notice_layout = QHBoxLayout(self.resolve_notice)
         notice_layout.setContentsMargins(0, 0, 0, 0)
@@ -364,8 +390,13 @@ class TranscriptPanel(QWidget):
         actions.addWidget(self.apply_button)
         preview_layout.addLayout(actions)
         self.apply_button.setToolTip("Exige confirmação e cria uma cópia verificada da timeline.")
-        self.pages.addWidget(preview)
+        self.preview_scroll = QScrollArea()
+        self.preview_scroll.setWidgetResizable(True)
+        self.preview_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        self.preview_scroll.setWidget(preview)
+        self.pages.addWidget(self.preview_scroll)
         self._transcription_footer = QWidget()
+        self._transcription_footer.setFixedHeight(40)
         bottom = QHBoxLayout(self._transcription_footer)
         bottom.setContentsMargins(0, 0, 0, 0)
         self.progress = QProgressBar()
@@ -395,12 +426,29 @@ class TranscriptPanel(QWidget):
         self._preset_changed()
         self.set_stage(0)
 
+    def _toggle_report(self, expanded: bool) -> None:
+        self.preview_text.setVisible(expanded)
+        self.report_toggle.setText(("▾" if expanded else "▸") + " Relatório e diagnósticos")
+
+    def add_source_widget(self, widget: QWidget) -> None:
+        """Reuse the track/channel selector inside the first transcription page."""
+        self.source_scroll = QScrollArea()
+        self.source_scroll.setWidgetResizable(True)
+        self.source_scroll.setMinimumHeight(130)
+        self.source_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        self.source_scroll.setWidget(widget)
+        self._transcription_preparation.insertWidget(0, self.source_scroll, 1)
+
     def set_stage(self, stage: int) -> None:
         """Switch pages without discarding transcription or plan state."""
         if not 0 <= stage < 3:
             return
         self.pages.setCurrentIndex(stage)
-        captions = ("02 / TRANSCRIÇÃO", "03 / REVISÃO", "04 / PRÉVIA E CORTES")
+        if stage == 2:
+            self.audio_preview.ensure_audio()
+        else:
+            self.audio_preview.player.pause()
+        captions = ("01 / TRANSCRIÇÃO", "02 / REVISÃO", "03 / PRÉVIA E CORTES")
         titles = ("Transcrição", "Revisão", "Prévia e cortes")
         self.stage_caption.setText(captions[stage])
         self.stage_title.setText(titles[stage])
@@ -411,6 +459,7 @@ class TranscriptPanel(QWidget):
         if self.operation_active:
             raise RuntimeError("Aguarde a operação atual antes de alterar as configurações.")
         self._config = config
+        self.audio_preview._config = config
         self._update_buttons()
 
     def selection_changed(self) -> None:
@@ -442,7 +491,7 @@ class TranscriptPanel(QWidget):
                 self._layout = None
                 self._layout_error = str(exc)
         if self._layout is not None and previous_fingerprint != self._layout.fingerprint:
-            self._plan = None
+            self._invalidate_preview()
             self.preview_text.clear()
         if identity != self._identity:
             self._identity = identity
@@ -469,7 +518,9 @@ class TranscriptPanel(QWidget):
         return TimelineLayout.from_internal_context(context)
 
     def _set_session(self, session: TranscriptSession | None) -> None:
+        self._invalidate_preview()
         self._session = session
+        self.progress.setValue(100 if session else 0)
         self.session_summary.setText(
             f"{len(session.segments)} trechos em {len(session.tracks)} faixas. Pronto para revisar."
             if session
@@ -588,7 +639,7 @@ class TranscriptPanel(QWidget):
 
     def _update_buttons(self) -> None:
         transcribing = self._thread is not None
-        busy = self.has_running_worker
+        busy = self.has_running_worker or self._preview_updating or self._confirming
         waiting = self._pending_plan_id is not None
         editing = not busy and not waiting
         self.resolve_notice.setVisible(waiting)
@@ -600,16 +651,22 @@ class TranscriptPanel(QWidget):
             else f"{verb} aguardando execução. No DaVinci Resolve, execute {APPLY_SCRIPT_MENU}. "
             "Para alterar a prévia, cancele esta solicitação."
         )
-        self._preview_settings.setEnabled(not waiting)
+        self._preview_settings.setEnabled(not waiting and not self._confirming)
         self.table.setEnabled(not waiting)
         has_layout = self._layout is not None
         has_session = self._session is not None
-        has_selected = self._use_mock or bool(self._selected_tracks_provider())
+        has_selected = bool(self._selected_tracks_provider())
         self.transcribe_button.setEnabled(editing and has_layout and has_selected)
-        self.retranscribe_button.setEnabled(editing and has_layout and has_session)
+        self.retranscribe_button.setEnabled(editing and has_layout and has_session and has_selected)
         self.export_button.setEnabled(editing and has_session)
         self.import_button.setEnabled(editing)
-        self.preview_button.setEnabled(editing and has_session and has_layout)
+        self.preview_button.setEnabled(
+            not self.has_running_worker
+            and not waiting
+            and not self._confirming
+            and has_session
+            and has_layout
+        )
         ready = (
             self._plan is not None
             and not self._plan.blocked
@@ -621,7 +678,12 @@ class TranscriptPanel(QWidget):
         self.cancel_button.setEnabled(transcribing)
         self.cancel_button.setVisible(transcribing)
         self._transcription_footer.setVisible(transcribing or self.pages.currentIndex() == 0)
-        self.review_button.setEnabled(has_session and not busy)
+        valid_session = (
+            self._session is not None
+            and self._layout is not None
+            and self._session.layout_fingerprint == self._layout.fingerprint
+        )
+        self.review_button.setEnabled(valid_session and editing)
         self.preview_step_button.setEnabled(has_session and not busy)
         self.activity_changed.emit()
 
@@ -630,15 +692,6 @@ class TranscriptPanel(QWidget):
         if self._thread is not None or self._layout is None or self._pending_plan_id is not None:
             return
         selected = self._selected_tracks_provider()
-        if self._use_mock:
-            from o_editor.demo_podcast import SPEAKERS
-            from o_editor.domain.enums import ChannelMode
-
-            # The mock demo always transcribes the four demo microphones.
-            selected = tuple(
-                SelectedVoiceTrack(index, name, ChannelMode.MONO)
-                for index, name in SPEAKERS.items()
-            )
         if not selected:
             self._error("Selecione pelo menos uma faixa de voz na lista 'Faixas usadas para voz'.")
             return
@@ -659,6 +712,7 @@ class TranscriptPanel(QWidget):
         worker.failed.connect(thread.quit)
         thread.finished.connect(worker.deleteLater)
         thread.finished.connect(self._thread_finished)
+        self._invalidate_preview()
         self._thread = thread
         self._worker = worker
         self.progress.setValue(0)
@@ -713,7 +767,7 @@ class TranscriptPanel(QWidget):
         self.status_label.setText(message)
 
     def _transcription_finished(self, session: TranscriptSession) -> None:
-        self._plan = None
+        self._invalidate_preview()
         self._set_session(session)
         self.progress.setValue(100)
         self._update_status()
@@ -744,8 +798,7 @@ class TranscriptPanel(QWidget):
         if session is None:
             return
         self._session = session
-        self._plan = None
-        self._update_buttons()
+        self._preview_settings_changed()
         self._save_timer.start()
 
     def _save_session_edits(self) -> None:
@@ -802,7 +855,7 @@ class TranscriptPanel(QWidget):
             self._error(str(exc))
             return
         self.preview_text.setPlainText("\n".join(preview.summary_lines()))
-        self.stage_requested.emit(3)
+        self.stage_requested.emit(2)
         if preview.blocked:
             return
         if not self._confirm_import(preview):
@@ -922,15 +975,71 @@ class TranscriptPanel(QWidget):
             self.preset_combo.blockSignals(False)
         self._preview_settings_changed()
 
-    def _preview_settings_changed(self, *_args: Any) -> None:
+    def _invalidate_preview(self) -> None:
+        self._preview_revision += 1
+        self._preview_timer.stop()
+        self._preview_updating = False
         self._plan = None
+        self.audio_preview.invalidate()
+
+    def _preview_settings_changed(self, *_args: Any) -> None:
+        had_preview = self._plan is not None or self._preview_updating
+        self._invalidate_preview()
         self.plan_changed.emit()
         self._update_status()
         if self._session is not None and self._pending_plan_id is None:
             self.status_label.setText(
-                "Prévia desatualizada. Clique em 'Gerar prévia' "
-                "para validar ou aplicar as mudanças."
+                "Prévia desatualizada; atualização em andamento…"
+                if had_preview
+                else "Prévia desatualizada. Clique em 'Gerar prévia'."
             )
+            if had_preview:
+                self._preview_updating = True
+                self._preview_timer.start()
+        self._update_buttons()
+
+    def _refresh_preview_async(self) -> None:
+        if self._session is None or self._layout is None or self._pending_plan_id is not None:
+            return
+        session, timeline = self._session, self._layout
+        silence = self.silence_settings()
+        cleanup = MicrophoneCleanupSettings(enabled=self.cleanup_microphones.isChecked())
+        policies = self.track_policies()
+        job = PreviewJob(
+            self._preview_revision,
+            lambda: prepare_rough_cut(
+                session,
+                layout=timeline,
+                silence=silence,
+                microphone_cleanup=cleanup,
+                track_policies=policies,
+            ),
+        )
+        self._preview_job = job
+        job.signals.finished.connect(self._preview_refreshed)
+        job.signals.failed.connect(self._preview_refresh_failed)
+        QThreadPool.globalInstance().start(job)
+
+    def _preview_refreshed(self, revision: int, plan: RoughCutPlan) -> None:
+        if revision != self._preview_revision:
+            return
+        self._preview_updating = False
+        self._plan = without_take_zoom(plan)
+        self._render_plan_preview()
+        self.plan_changed.emit()
+        self.status_label.setText(
+            "Prévia bloqueada. Confira os alertas no plano."
+            if plan.blocked
+            else "Prévia pronta para revisão."
+        )
+        self._update_buttons()
+
+    def _preview_refresh_failed(self, revision: int, message: str) -> None:
+        if revision != self._preview_revision:
+            return
+        self._preview_updating = False
+        self._plan = None
+        self.status_label.setText("Falha ao atualizar a prévia: " + message)
         self._update_buttons()
 
     def _preview(self) -> None:
@@ -939,6 +1048,7 @@ class TranscriptPanel(QWidget):
             return
         if self._session is None or self._layout is None:
             return
+        self._invalidate_preview()
         self._save_timer.stop()
         self._save_session_edits()
         try:
@@ -955,7 +1065,7 @@ class TranscriptPanel(QWidget):
             self._plan = None
             self._error(str(exc))
             return
-        self._plan = self._with_requested_zoom(self._plan)
+        self._plan = without_take_zoom(self._plan)
         self._render_plan_preview()
         self.plan_changed.emit()
         self.status_label.setText(
@@ -973,12 +1083,6 @@ class TranscriptPanel(QWidget):
     def plan(self) -> RoughCutPlan | None:
         return self._plan
 
-    def _with_requested_zoom(self, plan: RoughCutPlan) -> RoughCutPlan:
-        settings = self._take_zoom_provider() if self._take_zoom_provider else None
-        if settings is None:
-            return without_take_zoom(plan)
-        return with_take_zoom(plan, settings)
-
     def _render_plan_preview(self) -> None:
         if self._plan is None or self._session is None:
             return
@@ -991,45 +1095,56 @@ class TranscriptPanel(QWidget):
                 f"{summary.get('takes', 0)} takes com zoom; somente faixas de vídeo marcadas."
             )
         self.preview_text.setPlainText(text)
+        self.audio_preview.set_plan(self._plan, self._session)
 
     def take_zoom_changed(self) -> None:
-        """Zoom settings changed: update the zoom inside the current preview, if any."""
-        if self._plan is None or self._pending_plan_id is not None:
-            return
-        try:
-            updated = self._with_requested_zoom(self._plan)
-        except (OEditorError, ValueError):
-            updated = without_take_zoom(self._plan)
-        if updated is self._plan:
-            return
-        self._plan = updated
-        self._render_plan_preview()
-        self.plan_changed.emit()
+        """Settings are read only after the explicit per-execution modal choice."""
+        # Never attach zoom to a preview because of a persisted automatic flag.
+
+    def _confirm_rough_cut(self, plan: RoughCutPlan) -> str | None:
+        dialog = RoughCutConfirmation(plan.target_timeline_name, self)
+        dialog.exec()
+        return dialog.choice
 
     def _send_plan(self, *, apply: bool) -> None:
         plan = self._plan
-        if plan is None or plan.blocked or self._pending_plan_id is not None:
+        if (
+            plan is None
+            or plan.blocked
+            or self._pending_plan_id is not None
+            or self._confirming
+            or self._preview_updating
+            or self.has_running_worker
+        ):
             return
         if self._external_busy():
             self.status_label.setText("Aguarde o pedido de zoom em andamento no Resolve.")
             return
+        # Legacy plans/settings cannot bypass the explicit decision.
+        plan = without_take_zoom(plan)
         if apply:
-            zoom_line = ""
-            if plan.take_zoom is not None:
-                summary = plan.take_zoom.get("summary") or {}
-                zoom_line = (
-                    f"\nZoom por take junto: {summary.get('zoomed', 0)} de "
-                    f"{summary.get('takes', 0)} takes."
-                )
-            answer = QMessageBox.question(
-                self,
-                "Aplicar Rough Cut",
-                f"Criar a nova timeline '{plan.target_timeline_name}' com "
-                f"{plan.stats.operations} itens?{zoom_line}\n\nA timeline original não será "
-                "alterada. Após confirmar, o programa executará o pedido no Resolve.",
-            )
-            if answer != QMessageBox.StandardButton.Yes:
+            self._confirming = True
+            self._update_buttons()
+            try:
+                choice = self._confirm_rough_cut(plan)
+            finally:
+                self._confirming = False
+                self._update_buttons()
+            if choice not in {"apply", "review"}:
                 return
+            if self._plan is None or self._plan.plan_id != plan.plan_id:
+                self.status_label.setText("A prévia mudou. Confirme a nova proposta.")
+                return
+            if choice == "apply":
+                try:
+                    settings = self._take_zoom_provider() if self._take_zoom_provider else None
+                    if settings is None:
+                        raise ValueError("Confira as configurações de Zoom antes de aplicar.")
+                    plan = with_take_zoom(plan, settings)
+                except (OEditorError, ValueError) as exc:
+                    self._error(str(exc))
+                    return
+        self._plan = plan
         if self._use_mock:
             self.preview_text.append(
                 "\n[Mock] O plano foi gerado, mas nenhuma timeline real existe neste modo."

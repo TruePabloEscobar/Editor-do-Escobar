@@ -1,7 +1,7 @@
 """'Zoom' step: optional fixed zoom per take, applied in Resolve with undo.
 
 Two ways to use it, both optional:
-* together with the Rough Cut (the zoom goes inside the plan of step 04);
+* together with the Rough Cut (the zoom goes inside the plan of step 03);
 * afterwards, on a timeline created by O Editor that is open in Resolve.
 """
 
@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import random
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -304,9 +305,6 @@ class TakeZoomPanel(QWidget):
         layout.addWidget(self.controls)
 
         where = QHBoxLayout()
-        self.with_cut_check = QCheckBox("Aplicar junto ao criar o Rough Cut (etapa 04)")
-        self.with_cut_check.setObjectName("zoomWithRoughCut")
-        where.addWidget(self.with_cut_check)
         where.addStretch()
         self.timeline_label = label("Nenhuma timeline do O Editor lida.", "muted")
         where.addWidget(self.timeline_label)
@@ -353,7 +351,6 @@ class TakeZoomPanel(QWidget):
         self.undo_shortcut.activated.connect(self.undo)
 
         self.enabled_check.toggled.connect(self._settings_edited)
-        self.with_cut_check.toggled.connect(self._settings_edited)
         self.scale_field.changed.connect(self._settings_edited)
         self.every_field.changed.connect(self._settings_edited)
         self.base_spin.valueChanged.connect(self._settings_edited)
@@ -384,7 +381,6 @@ class TakeZoomPanel(QWidget):
         self._selected_tracks = set(settings.video_tracks)
         widgets = (
             self.enabled_check,
-            self.with_cut_check,
             self.base_spin,
             self.keep_base_check,
             self.offset_x,
@@ -393,9 +389,6 @@ class TakeZoomPanel(QWidget):
         for widget in widgets:
             widget.blockSignals(True)
         self.enabled_check.setChecked(settings.enabled)
-        self.with_cut_check.setChecked(
-            bool(self._preferences.value(WITH_CUT_KEY, False, type=bool))
-        )
         self.scale_field.set_value_range(settings.scale)
         self.every_field.set_value_range(settings.every)
         self.base_spin.setValue(round(settings.base_scale or 100))
@@ -421,10 +414,9 @@ class TakeZoomPanel(QWidget):
         )
 
     def settings_for_rough_cut(self) -> TakeZoomSettings | None:
-        """Settings to embed in the Rough Cut plan, or None when not requested."""
-        settings = self.settings()
-        if not settings.enabled or not self.with_cut_check.isChecked() or settings.problems():
-            return None
+        """Read configured values for an explicit APLICAR decision in the modal."""
+        settings = replace(self.settings(), enabled=True)
+        settings.validated()
         return settings
 
     @property
@@ -445,7 +437,6 @@ class TakeZoomPanel(QWidget):
 
     def _save_settings(self) -> None:
         self._preferences.setValue(SETTINGS_KEY, json.dumps(self.settings().to_dict()))
-        self._preferences.setValue(WITH_CUT_KEY, self.with_cut_check.isChecked())
 
     def _settings_edited(self, *_args: Any) -> None:
         self._save_settings()
@@ -464,7 +455,6 @@ class TakeZoomPanel(QWidget):
     def _sync_enabled(self) -> None:
         enabled = self.enabled_check.isChecked()
         self.controls.setEnabled(enabled)
-        self.with_cut_check.setEnabled(enabled)
         self.base_spin.setEnabled(enabled and not self.keep_base_check.isChecked())
         self.seed_label.setText(f"Sorteio nº {self._seed}")
 
@@ -554,15 +544,13 @@ class TakeZoomPanel(QWidget):
                 )
                 assignments = assign_takes(takes, settings)
                 fps, start = plan.layout.fps, plan.layout.start_frame
-                together = (
-                    "será aplicado junto ao Rough Cut"
-                    if self.with_cut_check.isChecked()
-                    else "marque 'Aplicar junto' para incluir no Rough Cut"
+                message = (
+                    self._summary_text(assignments)
+                    + " — prévia da etapa 03; confirme APLICAR ou REVISAR ao executar os cortes."
                 )
-                message = self._summary_text(assignments) + f" — prévia da etapa 04; {together}."
             else:
                 message = (
-                    "Gere a prévia dos cortes (etapa 04) para aplicar junto, ou abra no Resolve "
+                    "Gere a prévia dos cortes (etapa 03) para aplicar junto, ou abra no Resolve "
                     "uma timeline criada pelo O Editor e clique em 'Ler timeline aberta'."
                 )
         self.status_label.setText(message)

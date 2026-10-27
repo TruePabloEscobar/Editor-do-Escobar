@@ -6,6 +6,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$env:PSModulePath = (Join-Path $env:WINDIR "System32\WindowsPowerShell\v1.0\Modules") + ";" + (Join-Path $env:ProgramFiles "WindowsPowerShell\Modules")
 [Console]::OutputEncoding = New-Object Text.UTF8Encoding($false)
 $OutputEncoding = [Console]::OutputEncoding
 $env:PYTHONUTF8 = "1"
@@ -308,6 +309,7 @@ $launchCommandPath = [System.IO.Path]::Combine(
 $commandLines = @(
     "@echo off",
     "setlocal",
+    "chcp 65001 >nul",
     "set `"PYTHONUTF8=1`"",
     "set `"ROOT=$ProjectRoot`"",
     "set `"PYTHON=$PythonExecutable`"",
@@ -315,6 +317,7 @@ $commandLines = @(
     "set `"LOG=$configurationDirectory\launcher-external.log`"",
     "if `"%~1`"==`"`" exit /b 2",
     "set `"PYTHONPATH=%ROOT%\src;%PYTHONPATH%`"",
+    "if exist `"%ROOT%\tools\ffmpeg\bin\ffmpeg.exe`" set `"PATH=%ROOT%\tools\ffmpeg\bin;%PATH%`"",
     "rem Encaminha todos os argumentos, incluindo --internal-action-request.",
     "start `"`" /b `"%PYTHON%`" -m `"%MODULE%`" %* >> `"%LOG%`" 2>&1",
     "exit /b %ERRORLEVEL%"
