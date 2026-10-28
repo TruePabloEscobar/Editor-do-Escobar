@@ -151,3 +151,21 @@ class RoughCutDispatchWorker(QObject):
             self.failed.emit(_safe_error(exc))
         else:
             self.finished.emit(result)
+
+
+class BridgePlayheadWorker(QObject):
+    finished = Signal(object)
+    failed = Signal(str)
+
+    def __init__(self, bridge: NativeResolveBridge, frame: int, context: dict[str, object]) -> None:
+        super().__init__()
+        self._bridge, self._frame, self._context = bridge, frame, context
+
+    @Slot()
+    def run(self) -> None:
+        try:
+            result = self._bridge.set_bridge_playhead(self._frame, self._context)
+        except Exception as exc:
+            self.failed.emit(_safe_error(exc))
+        else:
+            self.finished.emit(result)

@@ -73,18 +73,29 @@ class NativeResolveBridge:
         runner: BridgeRunner | None = None,
         timeout_seconds: float = 30.0,
     ) -> None:
+        from o_editor.infrastructure.resolve.lua_mailbox import LuaMailboxBridge, integration_mode
+
+        self._lua_bridge = (
+            LuaMailboxBridge(timeout_seconds=timeout_seconds)
+            if integration_mode() == "Free"
+            else None
+        )
         self._root = root.resolve()
         self._config = config
         self._runner = runner or _run_process
         self._timeout_seconds = timeout_seconds
 
     def read_context(self) -> ResolveContext:
+        if self._lua_bridge is not None:
+            return ResolveContext.from_dict(self._lua_bridge.read_internal_context())
         return ResolveContext.from_dict(self._request("context"))
 
     def read_internal_context(self) -> dict[str, Any]:
         """Capture fresh layout inside Resolve; never enables mutation backends."""
         from o_editor.domain.timeline_layout import TimelineLayout
 
+        if self._lua_bridge is not None:
+            return self._lua_bridge.read_internal_context()
         result = self._request("refresh_context")
         TimelineLayout.from_internal_context(result)
         return {
@@ -95,6 +106,8 @@ class NativeResolveBridge:
 
     def start_rough_cut(self, *, plan_id: str, mode: str) -> dict[str, Any]:
         """Start exactly the confirmed one-use request; never replay or retry it."""
+        if self._lua_bridge is not None:
+            return self._lua_bridge.start_rough_cut(plan_id=plan_id, mode=mode)
         from o_editor.internal_actions.request import app_data_root
 
         if not re.fullmatch(r"[0-9a-f]{32}", plan_id) or mode not in {"VALIDATE", "APPLY"}:
@@ -115,7 +128,16 @@ class NativeResolveBridge:
             ),
         )
 
+    def set_bridge_playhead(self, frame: int, context: dict[str, Any]) -> bool:
+        if self._lua_bridge is None:
+            raise ResolveUnavailableError("A navegação pelo Bridge Lua não está selecionada.")
+        return self._lua_bridge.set_playhead(frame, context)
+
     def read_snapshot(self) -> TimelineSnapshot:
+        if self._lua_bridge is not None:
+            raise ResolveUnavailableError(
+                "Use Atualizar timeline para ler o contexto pelo EDE Bridge."
+            )
         try:
             return TimelineSnapshot.from_dict(self._request("snapshot"))
         except (KeyError, TypeError, ValueError) as exc:

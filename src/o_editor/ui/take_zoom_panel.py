@@ -667,18 +667,30 @@ class TakeZoomPanel(QWidget):
         idle = not self.operation_active and not self._busy_provider()
         layout = self._layout
         depth = self._history().depth(layout.timeline_id) if layout is not None else 0
-        self.apply_button.setEnabled(idle and self._preview is not None)
-        self.undo_button.setEnabled(idle and depth > 0)
+        from o_editor.infrastructure.resolve.lua_mailbox import integration_mode
+
+        free_write_blocked = not self._use_mock and integration_mode() == "Free"
+        self.apply_button.setEnabled(idle and self._preview is not None and not free_write_blocked)
+        self.undo_button.setEnabled(not free_write_blocked and idle and depth > 0)
         self.undo_button.setText(f"Desfazer (Ctrl+Z) · {depth}" if depth else "Desfazer (Ctrl+Z)")
         self.read_button.setEnabled(idle and not self._use_mock)
         self.cancel_button.setVisible(self._pending_plan_id is not None)
         if self._busy_provider() and self._pending_plan_id is None:
             self.apply_button.setToolTip("Aguarde o pedido do Rough Cut terminar no Resolve.")
         else:
-            self.apply_button.setToolTip("Somente Zoom e Anchor Point mudam; dá para desfazer.")
+            self.apply_button.setToolTip(
+                "Zoom no Resolve Free: escrita NÃO VALIDADA; prévia disponível."
+                if free_write_blocked
+                else "Somente Zoom e Anchor Point mudam; dá para desfazer."
+            )
         self.activity_changed.emit()
 
     def apply(self) -> None:
+        from o_editor.infrastructure.resolve.lua_mailbox import integration_mode
+
+        if not self._use_mock and integration_mode() == "Free":
+            self._set_result("Zoom no Free: escrita NÃO VALIDADA; prévia disponível.")
+            return
         preview = self._preview
         if preview is None or self.operation_active or self._busy_provider():
             return
@@ -695,6 +707,11 @@ class TakeZoomPanel(QWidget):
         self._send(build_apply_plan(preview))
 
     def undo(self) -> None:
+        from o_editor.infrastructure.resolve.lua_mailbox import integration_mode
+
+        if not self._use_mock and integration_mode() == "Free":
+            self._set_result("Zoom no Free: escrita NÃO VALIDADA; prévia disponível.")
+            return
         layout = self._layout
         if layout is None or self.operation_active or self._busy_provider():
             return
@@ -710,6 +727,11 @@ class TakeZoomPanel(QWidget):
         self._send(plan)
 
     def _send(self, plan: dict[str, Any]) -> None:
+        from o_editor.infrastructure.resolve.lua_mailbox import integration_mode
+
+        if not self._use_mock and integration_mode() == "Free":
+            self._set_result("Zoom no Free: escrita NÃO VALIDADA; prévia disponível.")
+            return
         if self._use_mock:
             self._set_result("Modo demonstração: o pedido foi montado, mas não há Resolve real.")
             return

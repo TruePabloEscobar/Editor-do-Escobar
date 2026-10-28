@@ -95,6 +95,7 @@ PRESET_LABELS = (
 
 
 class TranscriptPanel(QWidget):
+    frame_requested = Signal(int)
     stage_requested = Signal(int)
     activity_changed = Signal()
     plan_changed = Signal()
@@ -234,6 +235,7 @@ class TranscriptPanel(QWidget):
         review_layout.addLayout(filters)
         self.table = QTableView()
         self.table.setModel(self._proxy)
+        self.table.selectionModel().currentRowChanged.connect(self._review_row_selected)
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QTableView.SelectionBehavior.SelectRows)
         self.table.verticalHeader().setVisible(False)
@@ -466,6 +468,16 @@ class TranscriptPanel(QWidget):
         """Refresh action availability after source selection changes."""
         self._update_buttons()
 
+    def _review_row_selected(self, current: Any, _previous: Any) -> None:
+        from o_editor.infrastructure.resolve.lua_mailbox import integration_mode
+
+        if self._use_mock or integration_mode() != "Free" or not current.isValid():
+            return
+        row = self._proxy.mapToSource(current).row()
+        segment = self._model.segment_at(row)
+        if segment is not None:
+            self.frame_requested.emit(segment.start_frame)
+
     def _toggle_detail_columns(self, visible: bool) -> None:
         for column in (1, 3, 4, 5):
             self.table.setColumnHidden(column, not visible)
@@ -674,7 +686,14 @@ class TranscriptPanel(QWidget):
             and self._pending_plan_id is None
         )
         self.validate_button.setEnabled(ready and not self._use_mock)
-        self.apply_button.setEnabled(ready)
+        from o_editor.infrastructure.resolve.lua_mailbox import integration_mode
+
+        free_write_blocked = not self._use_mock and integration_mode() == "Free"
+        self.apply_button.setEnabled(ready and not free_write_blocked)
+        if free_write_blocked:
+            self.apply_button.setToolTip(
+                "Escrita no Resolve Free NÃO VALIDADA. Prévia e revisão disponíveis."
+            )
         self.cancel_button.setEnabled(transcribing)
         self.cancel_button.setVisible(transcribing)
         self._transcription_footer.setVisible(transcribing or self.pages.currentIndex() == 0)
@@ -1107,6 +1126,13 @@ class TranscriptPanel(QWidget):
         return dialog.choice
 
     def _send_plan(self, *, apply: bool) -> None:
+        from o_editor.infrastructure.resolve.lua_mailbox import integration_mode
+
+        if apply and not self._use_mock and integration_mode() == "Free":
+            self.status_label.setText(
+                "Rough Cut no Free: escrita NÃO VALIDADA. Use prévia ou validar."
+            )
+            return
         plan = self._plan
         if (
             plan is None

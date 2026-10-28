@@ -2,9 +2,24 @@
 
 Desenvolvido por [Pablo Escobar](https://pabloescobardj.web.app/Wikipedia-Pablo-Escobar.html).
 
-Assistente local para DaVinci Resolve Studio 21 no Windows x64. Transcreve áudio,
+Assistente local para DaVinci Resolve Studio 21 e integração experimental Free 21.1+ no Windows x64. Transcreve áudio,
 permite revisar as transcrições e planeja cortes e ajustes. A timeline original é
 preservada; o Rough Cut exige uma cópia criada e verificada.
+
+## Modo Free desta revisão: validação física pendente
+
+Esta revisão local adiciona EDE Bridge para o Resolve Free. A release pública pode
+ser anterior e ainda não conter esse modo; use o EXE gerado desta revisão para validá-lo.
+No instalador escolha **Não / Free**; CLI: `--resolve-edition Free`.
+Abra EDE pelo menu Iniciar. No Resolve execute **Workspace > Scripts > EDE Bridge**
+uma vez por sessão; no EDE clique **Atualizar timeline**. Não exige SDK Studio.
+Leitura, transcrição por faixas, revisão e prévias usam a interface existente.
+Rough Cut/zoom no Free: escrita NÃO VALIDADA em binário real e bloqueada.
+Playhead exige prova de retorno na sessão. Compatibilidade física Free não declarada.
+
+No modo Studio, mantenha a integração Workflow Integration descrita abaixo.
+Em um PC AMD a primeira configuração usa CPU/int8; CUDA não é necessária.
+Modelos continuam disponíveis somente pelo botão de download do EDE.
 
 ## Baixar e instalar
 
@@ -15,7 +30,7 @@ preservada; o Rough Cut exige uma cópia criada e verificada.
    estão incluídos. Não é necessário instalar Python, Node.js, Git, pip ou FFmpeg
    separadamente, usar winget ou configurar o PATH.
 4. Aguarde a conferência dos arquivos e do ambiente. Só depois o menu é atualizado.
-5. A instalação registra o plugin oficial. Se o Windows solicitar permissão de
+5. No modo Studio a instalação registra o plugin oficial. Se o Windows solicitar permissão de
    administrador para a pasta de plugins, autorize essa etapa.
 6. Reabra o Resolve: **Workspace → Workflow Integrations → EDE — Editor Do Escobar**.
    A interface completa do EDE abre em uma janela própria. O menu **Área de Trabalho
@@ -52,7 +67,7 @@ Para voltar a uma delas, execute o instalador do ZIP anterior.
 
 O programa funciona como plugin oficial Workflow Integration com aplicativo local
 separado para preservar a interface e o processamento atuais. Não é um efeito OFX.
-É necessário instalar primeiro o DaVinci Resolve Studio com seu SDK de desenvolvimento.
+No modo Studio é necessário instalar primeiro o DaVinci Resolve Studio com seu SDK de desenvolvimento.
 O módulo nativo é obtido dessa instalação, sem download e sem levar o binário de
 outra versão do Resolve. Atualizações preservam o plugin anterior em `.ede-backups`
 na pasta de plugins. Feche a janela da integração antes de atualizar.

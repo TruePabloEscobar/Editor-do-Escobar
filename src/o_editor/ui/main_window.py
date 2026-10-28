@@ -179,8 +179,16 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(STYLESHEET)
         self.setMinimumSize(1000, 680)
         self.resize(1280, 820)
+        self._pending_bridge_frame: int | None = None
+        self._navigation_thread: QThread | None = None
+        self._navigation_worker: Any = None
         self._build_ui()
         self._show_initial_status()
+        from o_editor.infrastructure.resolve.lua_mailbox import HELP, integration_mode
+
+        if not self._use_mock and integration_mode() == "Free" and not self._internal_host:
+            self._internal_host_label.setText("Desconectado · Free")
+            self._source_notice.setText(HELP)
 
     def _build_ui(self) -> None:
         central = QWidget()
@@ -284,6 +292,7 @@ class MainWindow(QMainWindow):
         )
         self._transcript_panel.add_source_widget(source_page)
         self._transcript_panel.stage_requested.connect(self._navigate)
+        self._transcript_panel.frame_requested.connect(self._seek_bridge_frame)
         self._transcript_panel.activity_changed.connect(self._update_refresh_availability)
         self._transcript_panel.activity_changed.connect(self._update_source_availability)
         self._take_zoom_panel = TakeZoomPanel(
@@ -625,6 +634,7 @@ class MainWindow(QMainWindow):
         self._ffmpeg_label.setToolTip(detail)
 
     def _apply_context(self, context: dict[str, Any]) -> None:
+        self._pending_bridge_frame = None
         self._context = context
         self._internal_host = context.get("integration_mode") == "internal_resolve_host"
         self._project_label.setText(str(context.get("project_name") or "—"))
@@ -636,7 +646,13 @@ class MainWindow(QMainWindow):
             self._fps_label.setText(str(fps))
         if fps and duration_frames is not None:
             self._duration_label.setText(f"{float(duration_frames) / float(fps):.1f} segundos")
-        self._internal_host_label.setText("READY" if self._internal_host else "UNVERIFIED")
+        self._internal_host_label.setText(
+            "Conectado · " + str(context.get("edition", "Free"))
+            if context.get("bridge_transport") == "lua_mailbox"
+            else "READY"
+            if self._internal_host
+            else "UNVERIFIED"
+        )
         if self._internal_host:
             self._overall_status_label.setText("READY_INTERNAL")
             self._mode_label.setText("TIMELINE CARREGADA")
@@ -645,6 +661,7 @@ class MainWindow(QMainWindow):
     def _update_refresh_availability(self) -> None:
         blocked = (
             self._busy
+            or self._navigation_thread is not None
             or self._refresh_thread is not None
             or self._transcript_panel.operation_active
             or self._take_zoom_panel.operation_active
@@ -653,6 +670,43 @@ class MainWindow(QMainWindow):
         self._settings_button.setEnabled(not blocked)
         if self._settings_dialog is not None:
             self._settings_dialog.set_editable(not blocked)
+
+    def _seek_bridge_frame(self, frame: int) -> None:
+        if self._context.get("bridge_transport") != "lua_mailbox":
+            return
+        if self._navigation_thread is not None:
+            self._pending_bridge_frame = frame
+            return
+        if self._refresh_thread is not None:
+            return
+        from o_editor.ui.controllers.workers import BridgePlayheadWorker
+
+        self._navigation_thread = QThread(self)
+        worker = BridgePlayheadWorker(
+            NativeResolveBridge(root=self._root, config=self._config.resolve, timeout_seconds=5),
+            frame,
+            self._context,
+        )
+        self._navigation_worker = worker
+        worker.moveToThread(self._navigation_thread)
+        self._navigation_thread.started.connect(worker.run)
+        worker.finished.connect(self._navigation_thread.quit)
+        worker.failed.connect(self._navigation_thread.quit)
+        worker.failed.connect(lambda message: self.statusBar().showMessage(message))
+        self._navigation_thread.finished.connect(worker.deleteLater)
+        self._navigation_thread.finished.connect(self._bridge_seek_finished)
+        self._update_refresh_availability()
+        self._navigation_thread.start()
+
+    def _bridge_seek_finished(self) -> None:
+        thread = self._navigation_thread
+        self._navigation_thread, self._navigation_worker = None, None
+        pending, self._pending_bridge_frame = self._pending_bridge_frame, None
+        if thread is not None:
+            thread.deleteLater()
+        self._update_refresh_availability()
+        if pending is not None:
+            self._seek_bridge_frame(pending)
 
     def _refresh_timeline(self) -> None:
         if (
@@ -699,6 +753,12 @@ class MainWindow(QMainWindow):
             "Não foi possível atualizar a timeline. Os dados anteriores foram mantidos."
         )
         self._source_notice.setText(message)
+        from o_editor.infrastructure.resolve.lua_mailbox import integration_mode
+
+        if integration_mode() == "Free":
+            self._internal_host_label.setText(
+                "Incompatível · Free" if "Incompatível" in message else "Desconectado · Free"
+            )
 
     def _refresh_finished(self) -> None:
         thread = self._refresh_thread
@@ -713,6 +773,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event: Any) -> None:
         if (
             self._refresh_thread is not None
+            or self._navigation_thread is not None
             or self._transcript_panel.has_running_worker
             or self._take_zoom_panel.has_running_worker
         ):

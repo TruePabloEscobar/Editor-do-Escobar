@@ -7,6 +7,7 @@ param(
     [string]$WorkflowDestination,
     [string]$WorkflowDeveloperRoot,
     [switch]$SkipWorkflowIntegration,
+    [ValidateSet("Studio", "Free")][string]$ResolveEdition = "Studio",
     [switch]$ValidateOnly,
     [switch]$OfflineDependencies
 )
@@ -51,7 +52,7 @@ foreach ($entry in $files) {
     }
 }
 if ($ValidateOnly) { Write-Host "Pacote integro: $($files.Count) arquivos."; return }
-if (-not $SkipWorkflowIntegration) {
+if ($ResolveEdition -eq "Studio" -and -not $SkipWorkflowIntegration) {
     if (-not $WorkflowDeveloperRoot) {
         $WorkflowDeveloperRoot = Join-Path $env:PROGRAMDATA 'Blackmagic Design/DaVinci Resolve/Support/Developer/Workflow Integrations'
     }
@@ -146,6 +147,11 @@ foreach ($entry in $files) {
         throw "Copia instalada divergente: $($entry.Name). Menu anterior preservado."
     }
 }
+if ($ResolveEdition -eq "Free") {
+    $bridgeArgs = @{ProjectRoot=$destination; PythonExecutable=$python}
+    if ($LauncherDestination) { $bridgeArgs.Destination=$LauncherDestination; $bridgeArgs.SkipShortcut=$true }
+    & (Join-Path $destination 'scripts/install_free_bridge.ps1') @bridgeArgs
+} else {
 $launcherArgs = @{ProjectRoot=$destination; PythonExecutable=$python}
 $verifyArgs = @{ProjectRoot=$destination; SkipProcessStart=$true}
 if ($LauncherDestination) {
@@ -154,15 +160,20 @@ if ($LauncherDestination) {
 }
 & (Join-Path $destination 'scripts\install_launcher.ps1') @launcherArgs
 & (Join-Path $destination 'scripts\verify_launcher_installation.ps1') @verifyArgs
+}
 Initialize-FreshCpuSettings
-if (-not $SkipWorkflowIntegration) {
+if ($ResolveEdition -eq "Studio" -and -not $SkipWorkflowIntegration) {
     $workflowArgs = @{ProjectRoot=$destination; Elevate=$true}
     if ($WorkflowDestination) { $workflowArgs.Destination=$WorkflowDestination }
     if ($WorkflowDeveloperRoot) { $workflowArgs.DeveloperRoot=$WorkflowDeveloperRoot }
     & (Join-Path $destination 'scripts\install_workflow_integration.ps1') @workflowArgs
     Write-Host 'Plugin EDE instalado e conferido. Reabra o Resolve: Workspace > Workflow Integrations > EDE - Editor Do Escobar.'
 }
+$integrationFile = Join-Path $env:APPDATA 'O Editor/integration.json'
+$integrationStage = $integrationFile + '.' + [Guid]::NewGuid().ToString('N') + '.tmp'
+[IO.File]::WriteAllText($integrationStage, ('{"schema_version":1,"edition":"' + $ResolveEdition + '"}'), (New-Object Text.UTF8Encoding($false)))
+Move-Item -LiteralPath $integrationStage -Destination $integrationFile -Force
 Write-Host "EDE instalado em: $destination"
-Write-Host "Acesso alternativo preservado: Area de Trabalho > Scripts > O EDITOR."
+if ($ResolveEdition -eq "Studio") { Write-Host "Acesso alternativo preservado: Area de Trabalho > Scripts > O EDITOR." }
 Write-Host "Engrenagem > Baixar modelo para configurar a transcricao."
 Write-Host "Configuracoes, sessoes, modelos e versoes anteriores foram preservados."
