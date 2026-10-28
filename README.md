@@ -6,11 +6,19 @@ Assistente local para DaVinci Resolve Studio 21 e integração experimental Free
 permite revisar as transcrições e planeja cortes e ajustes. A timeline original é
 preservada; o Rough Cut exige uma cópia criada e verificada.
 
+## Dois instaladores Windows x64
+
+- **[DaVinci FREE — EDE Bridge](https://github.com/TruePabloEscobar/Editor-do-Escobar/releases/latest/download/EDE-DaVinci-FREE-Windows-x64.exe)**: abre o EDE separadamente; no Resolve execute Workspace > Scripts > EDE Bridge e atualize a timeline no EDE. Não exige SDK Studio. Compatibilidade física Free ainda UNVERIFIED; escritas Rough Cut/zoom bloqueadas.
+- **[DaVinci PRO / Studio — Workflow Integration](https://github.com/TruePabloEscobar/Editor-do-Escobar/releases/latest/download/EDE-DaVinci-PRO-Studio-Windows-x64.exe)**: plugin em Workspace > Workflow Integrations > EDE. Requer DaVinci Resolve Studio e seu SDK instalado.
+
+Ambos incluem Python 3.11 x64, FFmpeg e dependências. CPU/int8 disponível sem CUDA;
+modelos de IA são baixados somente pelo botão do aplicativo. Configurações e sessões preservadas.
+Confira o SHA-256 correspondente. PRO significa DaVinci Resolve Studio.
+
 ## Modo Free desta revisão: validação física pendente
 
-Esta revisão local adiciona EDE Bridge para o Resolve Free. A release pública pode
-ser anterior e ainda não conter esse modo; use o EXE gerado desta revisão para validá-lo.
-No instalador escolha **Não / Free**; CLI: `--resolve-edition Free`.
+O instalador FREE inclui EDE Bridge para validação no Resolve Free.
+O instalador FREE seleciona automaticamente o modo Free.
 Abra EDE pelo menu Iniciar. No Resolve execute **Workspace > Scripts > EDE Bridge**
 uma vez por sessão; no EDE clique **Atualizar timeline**. Não exige SDK Studio.
 Leitura, transcrição por faixas, revisão e prévias usam a interface existente.
@@ -23,7 +31,7 @@ Modelos continuam disponíveis somente pelo botão de download do EDE.
 
 ## Baixar e instalar
 
-1. [Baixe EDE-Instalador-Windows-x64.exe](https://github.com/TruePabloEscobar/Editor-do-Escobar/releases/latest/download/EDE-Instalador-Windows-x64.exe).
+1. Baixe o instalador FREE ou PRO/Studio acima.
    Use o arquivo da release; **Code → Download ZIP** contém fontes para desenvolvimento.
 2. Confira o SHA-256 com o arquivo `.exe.sha256` correspondente.
 3. Execute o EXE. Python 3.11 x64, bibliotecas, runtimes Microsoft e FFmpeg/ffprobe
