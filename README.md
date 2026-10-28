@@ -8,10 +8,12 @@ preservada; o Rough Cut exige uma cópia criada e verificada.
 
 ## Baixar e instalar
 
-1. Use o arquivo **EDE-...-Windows-x64-Offline.exe** fornecido com esta versão.
+1. [Baixe EDE-Instalador-Windows-x64.exe](https://github.com/TruePabloEscobar/Editor-do-Escobar/releases/latest/download/EDE-Instalador-Windows-x64.exe).
+   Use o arquivo da release; **Code → Download ZIP** contém fontes para desenvolvimento.
 2. Confira o SHA-256 com o arquivo `.exe.sha256` correspondente.
-3. Execute o EXE. Python 3.11 x64, bibliotecas do aplicativo e FFmpeg/ffprobe já estão
-   incluídos; não é necessário instalar Python, usar winget ou configurar o PATH.
+3. Execute o EXE. Python 3.11 x64, bibliotecas, runtimes Microsoft e FFmpeg/ffprobe
+   estão incluídos. Não é necessário instalar Python, Node.js, Git, pip ou FFmpeg
+   separadamente, usar winget ou configurar o PATH.
 4. Aguarde a conferência dos arquivos e do ambiente. Só depois o menu é atualizado.
 5. A instalação registra o plugin oficial. Se o Windows solicitar permissão de
    administrador para a pasta de plugins, autorize essa etapa.
@@ -20,6 +22,12 @@ preservada; o Rough Cut exige uma cópia criada e verificada.
    → Scripts → O EDITOR** continua disponível como alternativa.
 7. Na engrenagem, escolha **Baixar modelo…** ou uma pasta CTranslate2 existente.
    O botão **Sobre** contém o tutorial do aplicativo.
+
+É necessária internet para baixar o modelo uma vez pelo botão. Depois a inferência
+é local. O modelo não vem dentro do EXE, por escolha do responsável pelo projeto.
+Uma instalação nova começa em **CPU / int8**, sem exigir CUDA, cuDNN ou NVIDIA.
+Uma seleção de dispositivo existente é preservada. A GPU continua disponível nas
+configurações para quem tiver os drivers e bibliotecas compatíveis.
 
 O ZIP **Offline** é uma alternativa: extraia-o inteiro e execute **Instalar EDE.bat**.
 Não execute o BAT dentro do visualizador de ZIP do Windows. A instalação é por

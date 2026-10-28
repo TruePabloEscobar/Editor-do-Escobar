@@ -1,7 +1,7 @@
 {
   "format": 1,
   "version": "0.2.0",
-  "build": "e1f1a83051dd",
+  "build": "b8c1cf07160b",
   "files": {
     "config/defaults.json": "cafc1b814742ef7444154d526a7b73e72c8347e7b88458744122918260d6ff8b",
     "Instalar EDE.bat": "164d5ecf1966ab1d4b678465aa709ce3d9b852914c07f1df0a610d9bf1eb7ed7",
@@ -16,11 +16,11 @@
     "LICENSE": "89f7c349baa70207b984b872238e56c819fa12cca5d08fedd7bc69149babc289",
     "O Editor.cmd": "e8730d56fe16d1f63b0f3e2f206b3648ce4838bcae9e6c928d3d968a3301c9b1",
     "pyproject.toml": "16e9384ab2755868b7bb29900dfa7b71e6be2372dae76aef40c6810451f86ce8",
-    "README.md": "713b97a842fcff59604ff92416f2d1bb5fff516877bddb34dfd6c3918b2e3c50",
+    "README.md": "82ee94e0254f5308c3719044c33533d2ef04851d5de953b8e0d3928f7a7835d3",
     "requirements/runtime-windows.txt": "d1486d72bfed4e5ba3726db1fe3be3a5dbf6c7027c087c9faad0acb8f3bd023a",
     "scripts/check_installation.py": "131b02ba869f645e9e86b0a734541ab7d5437faaa863e1ec695a0681eecdfa76",
     "scripts/install_launcher.ps1": "6a32380e27e4a3e37818b3e811058e9b4c9fc7fac1531d620abc143356e1c932",
-    "scripts/install_release.ps1": "dade4f7ed4b7b7632ddcb1a26ab265ea59cfcb92f0e44bc01465dd00066968da",
+    "scripts/install_release.ps1": "8dc607b26a2a12018d0f8daaee98d5427da65ed04d14e6481f13222711b66a55",
     "scripts/install_workflow_integration.ps1": "e118988f66883e596441719d797c1078d45fa3d7c8eb1042f40dc75a79bebd8c",
     "scripts/verify_launcher_installation.ps1": "15df5506dbccc2f6089328081de42f766cba1cd1dcb0cd4e5d672d79360a15e6",
     "src/o_editor/__init__.py": "0e536ed56656245b1b0fa4ca8bbb25e91787b912e8e2612f1891f4885d0983e4",
@@ -143,5 +143,15 @@
     "workflow_integration/com.oeditor.resolve.internalhost/preload.js": "ce72fe27081957f70f091a39e595c9cb3e42f062f933a603031be846f06f9c3b",
     "workflow_integration/com.oeditor.resolve.internalhost/renderer.js": "34e2298053d84f90b36171c7b856b2cb55c680c7782dead624b22a4028b53bc4",
     "workflow_integration/com.oeditor.resolve.internalhost/styles.css": "7eb1fdce31a24899bb57221c1f3ea78ee61871016625e5e91ae9cd3ae3b03906"
+  },
+  "installer": {
+    "build": "57d85c737c4c",
+    "file": "EDE-Instalador-Windows-x64.exe",
+    "sha256": "2b4378ecbed2b47bf143fb96d692f7ae54302fb39cfdee05be233c95305c5c41",
+    "bytes": 396429312,
+    "url": "https://github.com/TruePabloEscobar/Editor-do-Escobar/releases/latest/download/EDE-Instalador-Windows-x64.exe",
+    "models_included": false,
+    "model_setup": "Botao Baixar modelo no EDE",
+    "fresh_install_device": "cpu"
   }
 }

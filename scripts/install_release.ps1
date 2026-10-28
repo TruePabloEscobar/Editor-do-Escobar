@@ -15,6 +15,23 @@ $env:PSModulePath = (Join-Path $env:WINDIR "System32\WindowsPowerShell\v1.0\Modu
 [Console]::OutputEncoding = New-Object Text.UTF8Encoding($false)
 $OutputEncoding = [Console]::OutputEncoding
 $env:PYTHONUTF8 = "1"
+
+function Initialize-FreshCpuSettings {
+    # A new PC needs no separate CUDA runtime. Existing choices remain byte-identical.
+    if ($env:O_EDITOR_CONFIG) { return }
+    $configuration = Join-Path $env:APPDATA 'O Editor/config.json'
+    if ([IO.File]::Exists($configuration)) { return }
+    $directory = [IO.Path]::GetDirectoryName($configuration)
+    [IO.Directory]::CreateDirectory($directory) | Out-Null
+    $temporary = Join-Path $directory ('.ede-install-' + [Guid]::NewGuid().ToString('N') + '.tmp')
+    [IO.File]::WriteAllText($temporary, '{"transcription":{"device":"cpu","compute_type":"int8"}}', (New-Object Text.UTF8Encoding($false)))
+    try { [IO.File]::Move($temporary, $configuration) }
+    catch {
+        if ([IO.File]::Exists($configuration)) { [IO.File]::Delete($temporary); return }
+        throw
+    }
+    Write-Host 'Primeira instalacao: CPU configurada, sem exigir CUDA. GPU pode ser escolhida nas configuracoes.'
+}
 if (-not $SourceRoot) { $SourceRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path) }
 $SourceRoot = [IO.Path]::GetFullPath($SourceRoot)
 $manifestPath = Join-Path $SourceRoot "package-manifest.json"
@@ -137,6 +154,7 @@ if ($LauncherDestination) {
 }
 & (Join-Path $destination 'scripts\install_launcher.ps1') @launcherArgs
 & (Join-Path $destination 'scripts\verify_launcher_installation.ps1') @verifyArgs
+Initialize-FreshCpuSettings
 if (-not $SkipWorkflowIntegration) {
     $workflowArgs = @{ProjectRoot=$destination; Elevate=$true}
     if ($WorkflowDestination) { $workflowArgs.Destination=$WorkflowDestination }
