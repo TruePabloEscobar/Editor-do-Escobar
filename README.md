@@ -15,20 +15,6 @@ Ambos incluem Python 3.11 x64, FFmpeg e dependências. CPU/int8 disponível sem 
 modelos de IA são baixados somente pelo botão do aplicativo. Configurações e sessões preservadas.
 Confira o SHA-256 correspondente. PRO significa DaVinci Resolve Studio.
 
-## Modo Free desta revisão: validação física pendente
-
-O instalador FREE inclui EDE Bridge para validação no Resolve Free.
-O instalador FREE seleciona automaticamente o modo Free.
-Abra EDE pelo menu Iniciar. No Resolve execute **Workspace > Scripts > EDE Bridge**
-uma vez por sessão; no EDE clique **Atualizar timeline**. Não exige SDK Studio.
-Leitura, transcrição por faixas, revisão e prévias usam a interface existente.
-Rough Cut/zoom no Free: escrita NÃO VALIDADA em binário real e bloqueada.
-Playhead exige prova de retorno na sessão. Compatibilidade física Free não declarada.
-
-No modo Studio, mantenha a integração Workflow Integration descrita abaixo.
-Em um PC AMD a primeira configuração usa CPU/int8; CUDA não é necessária.
-Modelos continuam disponíveis somente pelo botão de download do EDE.
-
 ## Baixar e instalar
 
 1. Baixe o instalador FREE ou PRO/Studio acima.
