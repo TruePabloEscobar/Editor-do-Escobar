@@ -73,6 +73,7 @@ $required = @(
     "index.html",
     "styles.css",
     "open-editor.lua"
+    "capture-context.js"
 )
 foreach ($name in $required) {
     if (-not [IO.File]::Exists([IO.Path]::Combine($source, $name))) {

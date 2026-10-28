@@ -5,6 +5,8 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { randomUUID } = require("crypto");
+const { spawn } = require("child_process");
+const { captureContext } = require("./capture-context.js");
 const WorkflowIntegration = require("./WorkflowIntegration.node");
 
 const PLUGIN_ID = "com.oeditor.resolve.internalhost";
@@ -33,13 +35,6 @@ function publishEditorStatus(value) {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("editor:status", value);
 }
 
-// Long brackets preserve Unicode and cannot interpret paths as Lua code.
-function luaLiteral(value) {
-  let separator = "";
-  while (value.includes(`]${separator}]`)) separator += "=";
-  return `[${separator}[${value}]${separator}]`;
-}
-
 async function openEditor() {
   if (openingEditor) throw new Error("A abertura do EDE já está em andamento.");
   if (!resolveObject || stopping) throw new Error("A integração com o Resolve não está pronta.");
@@ -55,28 +50,37 @@ async function openEditor() {
     }
     ensureDirectories();
     const launchId = randomUUID();
-    const receipt = path.join(directories.launches, `${launchId}.json`);
-    const entry = path.join(__dirname, "open-editor.lua").replace(/\\/g, "/");
-    const fusion = await resolveObject.Fusion();
-    if (!fusion) throw new Error("O Resolve não disponibilizou o host Fusion para abrir o EDE.");
-    // Read-only bootstrap only. Never consume a pending editorial plan on startup.
-    await fusion.Execute(`local open=dofile(${luaLiteral(entry)}); ` +
-      `open(${luaLiteral(receipt.replace(/\\/g, "/"))},${luaLiteral(launchId)})`);
-    const deadline = Date.now() + 15000;
-    while (Date.now() < deadline && !stopping) {
-      if (fs.existsSync(receipt)) {
-        const result = JSON.parse(fs.readFileSync(receipt, "utf8"));
-        if (result.schema_version !== 1 || result.launch_id !== launchId || result.launched !== true) {
-          throw new Error(result.error || "O host não confirmou a abertura do EDE.");
-        }
-        appendLog(`editor_launch=${launchId} status=DISPATCHED`);
-        return { status: "DISPATCHED", detail: result.status === "SUCCESS"
-          ? "Pedido enviado ao EDE. Continue na janela do editor."
-          : "Pedido enviado ao EDE com diagnóstico. Abra um projeto e uma timeline no Resolve." };
-      }
-      await new Promise((done) => setTimeout(done, 100));
-    }
-    throw new Error("O Resolve não confirmou a abertura em 15 segundos. Consulte o diagnóstico antes de tentar novamente.");
+    const context = await captureContext(resolveObject, async (count) => {
+      if (stopping) throw new Error("A integração foi encerrada durante a leitura.");
+      publishEditorStatus({ status: "OPENING", detail: `Lendo a timeline: ${count} clipes…` });
+      await new Promise(done => setTimeout(done, 0));
+    });
+    if (stopping) throw new Error("A integração foi encerrada durante a leitura.");
+    const temporary = path.join(process.env.TEMP || os.tmpdir(), "o-editor");
+    fs.mkdirSync(temporary, { recursive: true });
+    const contextPath = path.join(temporary, `launch-context-${launchId}.json`);
+    writeJsonAtomic(contextPath, context);
+    const environment = { ...process.env, PYTHONUTF8: "1",
+      PYTHONPATH: path.join(config.project_root, "src") + path.delimiter + (process.env.PYTHONPATH || ""),
+      PATH: path.join(config.project_root, "tools", "ffmpeg", "bin") + path.delimiter + (process.env.PATH || "") };
+    for (const name of ["PYTHONHOME", "QT_PLUGIN_PATH", "QT_QPA_PLATFORM_PLUGIN_PATH", "QML2_IMPORT_PATH", "QML_IMPORT_PATH"]) delete environment[name];
+    const descriptor = fs.openSync(path.join(process.env.APPDATA, "O Editor", "launcher-external.log"), "a");
+    try {
+      await new Promise((done, fail) => {
+        const child = spawn(config.python_executable,
+          ["-c", "import ctypes, runpy; ctypes.windll.kernel32.FreeConsole(); runpy.run_module('o_editor', run_name='__main__')",
+            "--launch-context", contextPath, "--internal-host"],
+          { cwd: config.project_root, env: environment, shell: false, windowsHide: false,
+            detached: true, stdio: ["ignore", descriptor, descriptor] });
+        child.once("error", fail);
+        child.once("spawn", () => { child.unref(); done(); });
+      });
+    } finally { fs.closeSync(descriptor); }
+    writeJsonAtomic(path.join(directories.launches, `${launchId}.json`), {
+      schema_version: 1, launch_id: launchId, launched: true, status: "DISPATCHED", mutations_executed: false,
+    });
+    appendLog(`editor_launch=${launchId} status=DISPATCHED clips=${context.layout.clips.length}`);
+    return { status: "DISPATCHED", detail: "Pedido enviado ao EDE. Continue na janela do editor." };
   } finally {
     openingEditor = false;
   }

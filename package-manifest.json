@@ -1,7 +1,7 @@
 {
   "format": 1,
   "version": "0.2.0",
-  "build": "4a2adb00da7a",
+  "build": "e1f1a83051dd",
   "files": {
     "config/defaults.json": "cafc1b814742ef7444154d526a7b73e72c8347e7b88458744122918260d6ff8b",
     "Instalar EDE.bat": "164d5ecf1966ab1d4b678465aa709ce3d9b852914c07f1df0a610d9bf1eb7ed7",
@@ -21,7 +21,7 @@
     "scripts/check_installation.py": "131b02ba869f645e9e86b0a734541ab7d5437faaa863e1ec695a0681eecdfa76",
     "scripts/install_launcher.ps1": "6a32380e27e4a3e37818b3e811058e9b4c9fc7fac1531d620abc143356e1c932",
     "scripts/install_release.ps1": "dade4f7ed4b7b7632ddcb1a26ab265ea59cfcb92f0e44bc01465dd00066968da",
-    "scripts/install_workflow_integration.ps1": "e3f4bab497b471eec4039ba5cdc3c12fbfa0c0e65cc6b496dd61bf3a1bc85c58",
+    "scripts/install_workflow_integration.ps1": "e118988f66883e596441719d797c1078d45fa3d7c8eb1042f40dc75a79bebd8c",
     "scripts/verify_launcher_installation.ps1": "15df5506dbccc2f6089328081de42f766cba1cd1dcb0cd4e5d672d79360a15e6",
     "src/o_editor/__init__.py": "0e536ed56656245b1b0fa4ca8bbb25e91787b912e8e2612f1891f4885d0983e4",
     "src/o_editor/__main__.py": "48d411b624d24470879d57809241adbae41320f1fb07ac8fd5cdb07a9b17ff37",
@@ -134,8 +134,9 @@
     "src/o_editor/ui/theme.py": "d1c46653dee862b5368988f35f91e35a57722910528e884a0fcd3cb00122a0f0",
     "src/o_editor/ui/transcript_panel.py": "7f0b3ccd87b0595ed0132425468f2b9b9e7857d9fe88fed203c9a8714c29b943",
     "src/o_editor/ui/voice_track_selector.py": "f55f07915f1655f7952e61dbccd324dd3cda7c420dc5300e7eb51558a4c4e80d",
+    "workflow_integration/com.oeditor.resolve.internalhost/capture-context.js": "63b97f97323617e68d557a705f01a5c41cf3acdfa7a2e453019e8649d5e34900",
     "workflow_integration/com.oeditor.resolve.internalhost/index.html": "af4f46597c764d0c642e461178560a258a7e443167bb3fbb3a86555835362e77",
-    "workflow_integration/com.oeditor.resolve.internalhost/main.js": "8c043042f588177fd71faaf0d16153a41a8ed443be797f22ef748a29e4b22442",
+    "workflow_integration/com.oeditor.resolve.internalhost/main.js": "9a92e4f2a24f2266dc8ec163367d0ea79cdd77322138576bcddbccf69a12493b",
     "workflow_integration/com.oeditor.resolve.internalhost/manifest.xml": "bc1868ac6b179ffbbb01aa9e070bc76da68adb4d3505c779052ac3ba08788e65",
     "workflow_integration/com.oeditor.resolve.internalhost/open-editor.lua": "e0515c96aa766be3404b8d7ee6dd1e26a78665f1c21cd135e11ce8a435d108f9",
     "workflow_integration/com.oeditor.resolve.internalhost/package.json": "0d225579d712b866b1042cefd593fcae2659a6149d78f37e26cd998a96a51b85",
