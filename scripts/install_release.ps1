@@ -6,6 +6,7 @@ param(
     [string]$LauncherDestination,
     [string]$WorkflowDestination,
     [string]$WorkflowDeveloperRoot,
+    [string]$ShortcutDestination,
     [switch]$SkipWorkflowIntegration,
     [ValidateSet("Studio", "Free")][string]$ResolveEdition = "Studio",
     [switch]$ValidateOnly,
@@ -149,7 +150,9 @@ foreach ($entry in $files) {
 }
 if ($ResolveEdition -eq "Free") {
     $bridgeArgs = @{ProjectRoot=$destination; PythonExecutable=$python}
-    if ($LauncherDestination) { $bridgeArgs.Destination=$LauncherDestination; $bridgeArgs.SkipShortcut=$true }
+    # Standalone shortcuts are created below for both editions.
+    $bridgeArgs.SkipShortcut=$true
+    if ($LauncherDestination) { $bridgeArgs.Destination=$LauncherDestination }
     & (Join-Path $destination 'scripts/install_free_bridge.ps1') @bridgeArgs
 } else {
 $launcherArgs = @{ProjectRoot=$destination; PythonExecutable=$python}
@@ -160,6 +163,12 @@ if ($LauncherDestination) {
 }
 & (Join-Path $destination 'scripts\install_launcher.ps1') @launcherArgs
 & (Join-Path $destination 'scripts\verify_launcher_installation.ps1') @verifyArgs
+}
+# Isolated installs (custom menu destination) never touch the real Desktop/Start menu.
+if ($ShortcutDestination -or -not $LauncherDestination) {
+    $shortcutArgs = @{ProjectRoot=$destination}
+    if ($ShortcutDestination) { $shortcutArgs.Destination = @($ShortcutDestination) }
+    & (Join-Path $destination 'scripts/install_app_shortcuts.ps1') @shortcutArgs
 }
 Initialize-FreshCpuSettings
 if ($ResolveEdition -eq "Studio" -and -not $SkipWorkflowIntegration) {
@@ -174,6 +183,7 @@ $integrationStage = $integrationFile + '.' + [Guid]::NewGuid().ToString('N') + '
 [IO.File]::WriteAllText($integrationStage, ('{"schema_version":1,"edition":"' + $ResolveEdition + '"}'), (New-Object Text.UTF8Encoding($false)))
 Move-Item -LiteralPath $integrationStage -Destination $integrationFile -Force
 Write-Host "EDE instalado em: $destination"
+Write-Host "Abra o EDE pelo icone 'Editor Do Escobar' na Area de Trabalho ou no menu Iniciar."
 if ($ResolveEdition -eq "Studio") { Write-Host "Acesso alternativo preservado: Area de Trabalho > Scripts > O EDITOR." }
 Write-Host "Engrenagem > Baixar modelo para configurar a transcricao."
 Write-Host "Configuracoes, sessoes, modelos e versoes anteriores foram preservados."

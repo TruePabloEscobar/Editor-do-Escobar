@@ -8,12 +8,29 @@ preservada; o Rough Cut exige uma cópia criada e verificada.
 
 ## Dois instaladores Windows x64
 
-- **[DaVinci FREE — EDE Bridge](https://github.com/TruePabloEscobar/Editor-do-Escobar/releases/latest/download/EDE-DaVinci-FREE-Windows-x64.exe)**: abre o EDE separadamente; no Resolve execute Workspace > Scripts > EDE Bridge e atualize a timeline no EDE. Não exige SDK Studio. Compatibilidade física Free ainda UNVERIFIED; escritas Rough Cut/zoom bloqueadas.
-- **[DaVinci PRO / Studio — Workflow Integration](https://github.com/TruePabloEscobar/Editor-do-Escobar/releases/latest/download/EDE-DaVinci-PRO-Studio-Windows-x64.exe)**: plugin em Workspace > Workflow Integrations > EDE. Requer DaVinci Resolve Studio e seu SDK instalado.
+- **[DaVinci FREE](https://github.com/TruePabloEscobar/Editor-do-Escobar/releases/latest/download/EDE-DaVinci-FREE-Windows-x64.exe)**: instala o EDE como aplicativo independente. Abra pelo ícone **Editor Do Escobar** na Área de Trabalho ou no menu Iniciar. Também instala o script Workspace > Scripts > EDE Bridge. Não exige SDK Studio. Compatibilidade física Free ainda UNVERIFIED; escritas Rough Cut/zoom bloqueadas.
+- **[DaVinci PRO / Studio](https://github.com/TruePabloEscobar/Editor-do-Escobar/releases/latest/download/EDE-DaVinci-PRO-Studio-Windows-x64.exe)**: instala o mesmo aplicativo independente (ícone **Editor Do Escobar**) **e** a integração Workspace > Workflow Integrations > EDE, que abre direto pelo DaVinci Resolve Studio. Requer o DaVinci Resolve Studio instalado.
 
-Ambos incluem Python 3.11 x64, FFmpeg e dependências. CPU/int8 disponível sem CUDA;
-modelos de IA são baixados somente pelo botão do aplicativo. Configurações e sessões preservadas.
+Basta executar o instalador: Python 3.11 x64, FFmpeg e todas as dependências vêm incluídos,
+sem instalar nada globalmente no Windows. No final, o botão **Abrir o EDE** inicia o programa.
+O modelo de IA é baixado depois, dentro do EDE, pelo botão de download.
+CPU/int8 disponível sem CUDA. Configurações e sessões preservadas.
 Confira o SHA-256 correspondente. PRO significa DaVinci Resolve Studio.
+Se o EDE fechar com erro, a mensagem mostra o diagnóstico salvo em
+`%LOCALAPPDATA%\Editor Do Escobar\logs`.
+
+## Modo Free desta revisão: validação física pendente
+
+O instalador FREE seleciona automaticamente o modo Free.
+Abra o EDE pelo ícone **Editor Do Escobar**. Para ler a timeline, execute no Resolve
+**Workspace > Scripts > EDE Bridge** uma vez por sessão e clique **Atualizar timeline** no EDE.
+Leitura, transcrição por faixas, revisão e prévias usam a interface existente.
+Rough Cut/zoom no Free: escrita NÃO VALIDADA em binário real e bloqueada.
+Playhead exige prova de retorno na sessão. Compatibilidade física Free não declarada.
+
+No modo Studio, mantenha a integração Workflow Integration descrita abaixo.
+Em um PC AMD a primeira configuração usa CPU/int8; CUDA não é necessária.
+Modelos continuam disponíveis somente pelo botão de download do EDE.
 
 ## Baixar e instalar
 
@@ -27,8 +44,8 @@ Confira o SHA-256 correspondente. PRO significa DaVinci Resolve Studio.
 5. No modo Studio a instalação registra o plugin oficial. Se o Windows solicitar permissão de
    administrador para a pasta de plugins, autorize essa etapa.
 6. Reabra o Resolve: **Workspace → Workflow Integrations → EDE — Editor Do Escobar**.
-   A interface completa do EDE abre em uma janela própria. O menu **Área de Trabalho
-   → Scripts → O EDITOR** continua disponível como alternativa.
+   A interface completa do EDE abre em uma janela própria. O ícone **Editor Do Escobar**
+   e o menu **Área de Trabalho → Scripts → O EDITOR** continuam disponíveis como alternativa.
 7. Na engrenagem, escolha **Baixar modelo…** ou uma pasta CTranslate2 existente.
    O botão **Sobre** contém o tutorial do aplicativo.
 
